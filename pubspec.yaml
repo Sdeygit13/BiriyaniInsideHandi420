@@ -1,11 +1,9 @@
 name: smaran_flutter
 description: Smaran - dementia-friendly memory assistance platform, Flutter conversion.
-publish_to: 'none'
+publish_to: none
 version: 1.0.0+1
-
 environment:
   sdk: '>=3.13.0 <4.0.0'
-
 dependencies:
   flutter:
     sdk: flutter
@@ -15,14 +13,15 @@ dependencies:
   image_picker: ^1.2.0
   local_auth: ^2.3.0
   flutter_tts: ^4.2.3
-
+  android_alarm_manager_plus: ^5.1.1
+  flutter_local_notifications: ^22.3.0
+  timezone: ^0.11.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/
-    - assets/audio/
+  - assets/images/
+  - assets/audio/
