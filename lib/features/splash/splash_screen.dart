@@ -1,113 +1,123 @@
-import 'dart:async';
-
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_theme.dart';
-
 class SplashScreen extends StatefulWidget {
-  final WidgetBuilder onFinished;
-  const SplashScreen({super.key, required this.onFinished});
+  final Widget Function(BuildContext context) onFinished;
+
+  const SplashScreen({
+    super.key,
+    required this.onFinished,
+  });
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  final AudioPlayer _player = AudioPlayer();
-  Timer? _timer;
-  double _progress = 0;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  bool _finished = false;
 
   @override
   void initState() {
     super.initState();
-    _start();
+    _startSplash();
   }
 
-  Future<void> _start() async {
+  Future<void> _startSplash() async {
+    /*
+     * Dhak starts immediately and loops for the complete
+     * splash duration.
+     */
     try {
-      await _player.setReleaseMode(ReleaseMode.loop);
-      await _player.play(AssetSource('audio/dhakk_beat.mp3'));
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+
+      await _audioPlayer.play(
+        AssetSource('audio/dhakk_beat.mp3'),
+      );
+    } catch (_) {
+      // Splash must continue even if audio is unavailable.
+    }
+
+    /*
+     * EXACTLY 5 SECONDS.
+     *
+     * No timer.
+     * No progress calculation.
+     * No CircularProgressIndicator.
+     * No loading animation.
+     */
+    await Future.delayed(
+      const Duration(seconds: 5),
+    );
+
+    await _finishSplash();
+  }
+
+  Future<void> _finishSplash() async {
+    if (_finished) return;
+
+    _finished = true;
+
+    /*
+     * Stop Dhak before leaving the splash screen.
+     */
+    try {
+      await _audioPlayer.stop();
     } catch (_) {}
 
-    const totalTicks = 50;
-    var ticks = 0;
-    _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      ticks++;
-      setState(() => _progress = ticks / totalTicks);
-      if (ticks >= totalTicks) {
-        timer.cancel();
-        _finish();
-      }
-    });
-  }
-
-  Future<void> _finish() async {
-    await _player.stop();
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: widget.onFinished));
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: widget.onFinished,
+      ),
+    );
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
-    _player.dispose();
+    _audioPlayer.stop();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: cBg,
-        body: SafeArea(
-          child: Center(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final logoSize = constraints.maxWidth.clamp(110.0, 190.0).toDouble();
-                return Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Flexible(
-                      flex: 5,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 18),
-                        child: Image.asset(
-                          'assets/images/durga-puja-splash.png',
-                          fit: BoxFit.contain,
-                          width: double.infinity,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    // Exactly one Smaran logo. The old duplicate small S overlay is removed.
-                    Image.asset(
-                      'assets/images/smaran-splash-icon.png',
-                      width: logoSize,
-                      height: logoSize,
-                      fit: BoxFit.contain,
-                    ),
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      width: 58,
-                      height: 58,
-                      child: CircularProgressIndicator(
-                        value: _progress,
-                        strokeWidth: 5,
-                        color: cPrimaryDark,
-                        backgroundColor: Colors.white54,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text('Smaran', style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: cDeep)),
-                    const SizedBox(height: 20),
-                  ],
-                );
-              },
-            ),
-          ),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      /*
+       * The image itself covers the entire screen.
+       * This is only a fallback color if the image fails.
+       */
+      backgroundColor: const Color(0xFFFFF6E3),
+
+      body: SizedBox.expand(
+        child: Image.asset(
+          'assets/images/durga-puja-splash.png',
+
+          /*
+           * CRITICAL:
+           * Full-screen cover.
+           * No contain.
+           * No borders.
+           * No logo overlay.
+           * No loading indicator.
+           */
+          fit: BoxFit.cover,
+
+          alignment: Alignment.center,
+
+          errorBuilder: (
+            BuildContext context,
+            Object error,
+            StackTrace? stackTrace,
+          ) {
+            return const ColoredBox(
+              color: Color(0xFFFFF6E3),
+            );
+          },
         ),
-      );
+      ),
+    );
+  }
 }
