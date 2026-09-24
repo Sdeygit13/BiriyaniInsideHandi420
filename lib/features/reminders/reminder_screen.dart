@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../core/auth/auth_store.dart';
 import '../../core/domain/app_models.dart';
+import '../../core/localization/app_languages.dart';
 import '../../core/services/alarm_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/reminder_icons.dart';
 import '../talk/talking_screen.dart';
 
 class RemindersScreen extends StatefulWidget {
@@ -14,7 +17,22 @@ class RemindersScreen extends StatefulWidget {
 }
 
 class _RemindersScreenState extends State<RemindersScreen> {
-  // ── Add via voice (FAB) ──────────────────────────────────────
+  @override
+  void initState() {
+    super.initState();
+    widget.store.addListener(_rebuild);
+  }
+
+  @override
+  void dispose() {
+    widget.store.removeListener(_rebuild);
+    super.dispose();
+  }
+
+  void _rebuild() {
+    if (mounted) setState(() {});
+  }
+
   Future<void> _addViaVoice() async {
     final result = await Navigator.push<AlarmReminder>(
       context,
@@ -28,13 +46,12 @@ class _RemindersScreenState extends State<RemindersScreen> {
       await AlarmService.schedule(result);
       await widget.store.save();
       if (mounted) setState(() {});
-      _message('Alarm "${result.title}" added.');
+      _message('Reminder added: "${result.title}"');
     } catch (_) {
       _message('Could not schedule the alarm.', error: true);
     }
   }
 
-  // ── Edit existing (tap on card) ──────────────────────────────
   Future<void> _editReminder(AlarmReminder reminder) async {
     final updated = await showDialog<AlarmReminder>(
       context: context,
@@ -45,20 +62,18 @@ class _RemindersScreenState extends State<RemindersScreen> {
 
     try {
       await AlarmService.cancel(reminder.id);
-      final idx = widget.store.reminders.indexWhere((r) => r.id == reminder.id);
-      if (idx >= 0) {
-        widget.store.reminders[idx] = updated;
-      }
+      final idx =
+          widget.store.reminders.indexWhere((r) => r.id == reminder.id);
+      if (idx >= 0) widget.store.reminders[idx] = updated;
       await AlarmService.schedule(updated);
       await widget.store.save();
       if (mounted) setState(() {});
-      _message('Alarm updated.');
+      _message('Reminder updated.');
     } catch (_) {
-      _message('Could not update the alarm.', error: true);
+      _message('Could not update.', error: true);
     }
   }
 
-  // ── Toggle active ────────────────────────────────────────────
   Future<void> _toggle(AlarmReminder reminder, bool active) async {
     reminder.isActive = active;
     reminder.done = false;
@@ -68,7 +83,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
         await AlarmService.schedule(reminder);
       } catch (_) {
         reminder.isActive = false;
-        _message('Android exact-alarm permission is required.', error: true);
+        _message('Exact-alarm permission required.', error: true);
       }
     } else {
       await AlarmService.cancel(reminder.id);
@@ -77,7 +92,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
     if (mounted) setState(() {});
   }
 
-  // ── Delete ───────────────────────────────────────────────────
   Future<void> _delete(AlarmReminder reminder) async {
     await AlarmService.cancel(reminder.id);
     widget.store.reminders.removeWhere((e) => e.id == reminder.id);
@@ -95,31 +109,18 @@ class _RemindersScreenState extends State<RemindersScreen> {
     );
   }
 
-  String _repeatLabel(AlarmReminder reminder) {
-    switch (reminder.repeatType) {
+  String _repeatLabel(AlarmReminder r) {
+    switch (r.repeatType) {
       case RepeatType.daily:
         return 'Every day';
       case RepeatType.once:
         return 'Once';
       case RepeatType.specificDate:
-        final d = reminder.specificDate;
+        final d = r.specificDate;
         return d == null
             ? 'Specific date'
             : '${d.day.toString().padLeft(2, '0')}/'
                 '${d.month.toString().padLeft(2, '0')}/${d.year}';
-    }
-  }
-
-  String _typeLabel(AlarmReminder reminder) {
-    switch (reminder.alarmType) {
-      case AlarmType.medicine:
-        return 'Medicine';
-      case AlarmType.food:
-        return 'Food';
-      case AlarmType.memoryActivity:
-        return 'Memory Activity';
-      case AlarmType.customTask:
-        return 'Specific Task';
     }
   }
 
@@ -131,54 +132,39 @@ class _RemindersScreenState extends State<RemindersScreen> {
 
     return Scaffold(
       backgroundColor: cBg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header (mic button removed — voice is now via FAB)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(18, 10, 18, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Daily Routine',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      color: cDeep,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Set reminders like an Android alarm clock.',
-                    style: TextStyle(color: cMuted, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: reminders.isEmpty
-                  ? const _EmptyReminders()
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 100),
-                      itemCount: reminders.length,
-                      separatorBuilder: (_, _) =>
-                          const SizedBox(height: 10),
-                      itemBuilder: (_, index) {
-                        final reminder = reminders[index];
-                        return _ReminderCard(
-                          reminder: reminder,
-                          repeatLabel: _repeatLabel(reminder),
-                          typeLabel: _typeLabel(reminder),
-                          onToggle: (value) => _toggle(reminder, value),
-                          onDelete: () => _delete(reminder),
-                          onTap: () => _editReminder(reminder),
-                        );
-                      },
-                    ),
-            ),
-          ],
+      appBar: AppBar(
+        backgroundColor: cBg,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: cDeep, size: 28),
+          onPressed: () => Navigator.of(context).pop(),
         ),
+        title: const Text(
+          'Reminders',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+            color: cDeep,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: reminders.isEmpty
+            ? const _EmptyReminders()
+            : ListView.builder(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 100),
+                itemCount: reminders.length,
+                itemBuilder: (_, i) {
+                  final r = reminders[i];
+                  return _ReminderCard(
+                    reminder: r,
+                    repeatLabel: _repeatLabel(r),
+                    onToggle: (v) => _toggle(r, v),
+                    onDelete: () => _delete(r),
+                    onTap: () => _editReminder(r),
+                  );
+                },
+              ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'add_reminder',
@@ -196,8 +182,159 @@ class _RemindersScreenState extends State<RemindersScreen> {
 }
 
 // =============================================================================
-// EDITOR DIALOG (edit path only)
+// Reminder card — with type icon
 // =============================================================================
+
+class _ReminderCard extends StatelessWidget {
+  final AlarmReminder reminder;
+  final String repeatLabel;
+  final ValueChanged<bool> onToggle;
+  final VoidCallback onDelete;
+  final VoidCallback onTap;
+
+  const _ReminderCard({
+    required this.reminder,
+    required this.repeatLabel,
+    required this.onToggle,
+    required this.onDelete,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = ReminderIcons.iconFor(reminder);
+    final bg = ReminderIcons.colorFor(reminder);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: cWhite,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cBorder),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, color: cPrimaryDark, size: 30),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        reminder.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          color: cText,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${reminder.hour.toString().padLeft(2, '0')}:'
+                        '${reminder.minute.toString().padLeft(2, '0')} '
+                        '${reminder.amPm}',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: cPrimaryDark,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        repeatLabel,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: cMuted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Switch(
+                      value: reminder.isActive,
+                      onChanged: onToggle,
+                    ),
+                    IconButton(
+                      onPressed: onDelete,
+                      icon: const Icon(
+                        Icons.delete_outline_rounded,
+                        color: cDanger,
+                        size: 22,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Empty state
+// =============================================================================
+
+class _EmptyReminders extends StatelessWidget {
+  const _EmptyReminders();
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(30),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.alarm_add_rounded, size: 64, color: cPrimaryDark),
+              SizedBox(height: 12),
+              Text(
+                'No reminders yet',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: cDeep,
+                ),
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Tap "+ New Reminder" and speak your reminder.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: cMuted, height: 1.4),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+// =============================================================================
+// Editor dialog
+// =============================================================================
+
 class _ReminderEditorDialog extends StatefulWidget {
   final AlarmReminder initial;
   const _ReminderEditorDialog({required this.initial});
@@ -245,9 +382,8 @@ class _ReminderEditorDialogState extends State<_ReminderEditorDialog> {
       helpText: 'SET ALARM TIME',
       cancelText: 'CANCEL',
       confirmText: 'OK',
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context)
-            .copyWith(alwaysUse24HourFormat: false),
+      builder: (ctx, child) => MediaQuery(
+        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: false),
         child: child!,
       ),
     );
@@ -286,11 +422,11 @@ class _ReminderEditorDialogState extends State<_ReminderEditorDialog> {
   Future<void> _save() async {
     final title = _title.text.trim();
     if (title.isEmpty) {
-      _error('Enter what this alarm is for.');
+      _error('Enter a title.');
       return;
     }
     if (_alarmType == AlarmType.medicine && _medicineTiming == null) {
-      _error('Medicine alarms require Before Food or After Food.');
+      _error('Medicine requires Before / After Food.');
       return;
     }
     if (_repeat == RepeatType.specificDate && _specificDate == null) {
@@ -311,11 +447,14 @@ class _ReminderEditorDialogState extends State<_ReminderEditorDialog> {
             _time.minute,
           )
         : DateTime(now.year, now.month, now.day, hour24, _time.minute);
-
     if (_repeat == RepeatType.specificDate && !target.isAfter(now)) {
-      _error('That date and time has already passed.');
+      _error('That date has passed.');
       return;
     }
+
+    final lang = widget.initial.language.isNotEmpty
+        ? widget.initial.language
+        : AuthStore.instance.preferredLanguage.key;
 
     final updated = AlarmReminder(
       id: widget.initial.id,
@@ -330,8 +469,9 @@ class _ReminderEditorDialogState extends State<_ReminderEditorDialog> {
       medicineTiming: _medicineTiming,
       isActive: widget.initial.isActive,
       done: false,
+      language: lang,
+      createdByName: widget.initial.createdByName,
     );
-
     Navigator.of(context).pop(updated);
   }
 
@@ -346,11 +486,11 @@ class _ReminderEditorDialogState extends State<_ReminderEditorDialog> {
     return AlertDialog(
       title: const Row(
         children: [
-          Icon(Icons.alarm_rounded, color: cPrimaryDark),
+          Icon(Icons.edit_rounded, color: cPrimaryDark),
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Edit Alarm',
+              'Edit Reminder',
               style: TextStyle(fontWeight: FontWeight.w900),
             ),
           ),
@@ -362,123 +502,74 @@ class _ReminderEditorDialogState extends State<_ReminderEditorDialog> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _TimePickerTile(time: _time, onTap: _pickTime),
+              _TimeTile(time: _time, onTap: _pickTime),
               const SizedBox(height: 16),
-              const Text(
-                'Repeat',
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  color: cDeep,
-                ),
-              ),
+              const Text('Repeat',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w900, color: cDeep)),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  ChoiceChip(
-                    selected: _repeat == RepeatType.daily,
-                    label: const Text('Daily'),
-                    avatar: const Icon(Icons.repeat, size: 18),
-                    onSelected: (_) =>
-                        setState(() => _repeat = RepeatType.daily),
-                  ),
-                  ChoiceChip(
-                    selected: _repeat == RepeatType.once,
-                    label: const Text('Once'),
-                    avatar: const Icon(Icons.looks_one_rounded, size: 18),
-                    onSelected: (_) =>
-                        setState(() => _repeat = RepeatType.once),
-                  ),
-                  ChoiceChip(
-                    selected: _repeat == RepeatType.specificDate,
-                    label: const Text('Specific Date'),
-                    avatar: const Icon(Icons.calendar_month, size: 18),
-                    onSelected: (_) async {
-                      setState(() => _repeat = RepeatType.specificDate);
-                      await _pickDate();
-                    },
-                  ),
-                ],
-              ),
-              if (_repeat == RepeatType.specificDate) ...[
-                const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  onPressed: _pickDate,
-                  icon: const Icon(Icons.calendar_today_rounded),
-                  label: Text(
-                    _specificDate == null
-                        ? 'Select Date'
-                        : '${_specificDate!.day}/'
-                            '${_specificDate!.month}/'
-                            '${_specificDate!.year}',
-                  ),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                ChoiceChip(
+                  selected: _repeat == RepeatType.daily,
+                  label: const Text('Daily'),
+                  onSelected: (_) =>
+                      setState(() => _repeat = RepeatType.daily),
                 ),
-              ],
+                ChoiceChip(
+                  selected: _repeat == RepeatType.once,
+                  label: const Text('Once'),
+                  onSelected: (_) =>
+                      setState(() => _repeat = RepeatType.once),
+                ),
+                ChoiceChip(
+                  selected: _repeat == RepeatType.specificDate,
+                  label: const Text('Specific Date'),
+                  onSelected: (_) async {
+                    setState(() => _repeat = RepeatType.specificDate);
+                    await _pickDate();
+                  },
+                ),
+              ]),
               const SizedBox(height: 18),
-              const Text(
-                'Alarm Type',
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  color: cDeep,
-                ),
-              ),
+              const Text('Type',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w900, color: cDeep)),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: AlarmType.values.map((type) {
-                  final selected = type == _alarmType;
-                  return ChoiceChip(
-                    selected: selected,
-                    label: Text(_alarmTypeLabel(type)),
-                    avatar: Icon(_alarmTypeIcon(type), size: 18),
-                    onSelected: (_) => _selectType(type),
-                  );
-                }).toList(),
-              ),
+              Wrap(spacing: 8, runSpacing: 8, children: AlarmType.values.map((t) {
+                final selected = t == _alarmType;
+                return ChoiceChip(
+                  selected: selected,
+                  label: Text(_typeLabel(t)),
+                  onSelected: (_) => _selectType(t),
+                );
+              }).toList()),
               if (_alarmType == AlarmType.medicine) ...[
                 const SizedBox(height: 16),
-                const Text(
-                  'When?',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    color: cDeep,
+                Wrap(spacing: 8, children: [
+                  ChoiceChip(
+                    selected: _medicineTiming == MedicineTiming.beforeFood,
+                    label: const Text('Before Food'),
+                    onSelected: (_) => setState(
+                        () => _medicineTiming = MedicineTiming.beforeFood),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    ChoiceChip(
-                      selected:
-                          _medicineTiming == MedicineTiming.beforeFood,
-                      label: const Text('Before Food'),
-                      onSelected: (_) => setState(
-                        () => _medicineTiming = MedicineTiming.beforeFood,
-                      ),
-                    ),
-                    ChoiceChip(
-                      selected:
-                          _medicineTiming == MedicineTiming.afterFood,
-                      label: const Text('After Food'),
-                      onSelected: (_) => setState(
-                        () => _medicineTiming = MedicineTiming.afterFood,
-                      ),
-                    ),
-                  ],
-                ),
+                  ChoiceChip(
+                    selected: _medicineTiming == MedicineTiming.afterFood,
+                    label: const Text('After Food'),
+                    onSelected: (_) => setState(
+                        () => _medicineTiming = MedicineTiming.afterFood),
+                  ),
+                ]),
               ],
               const SizedBox(height: 16),
               TextField(
                 controller: _title,
-                decoration: inputDec('Task / Reminder name *'),
+                decoration: inputDec('Reminder title'),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _detail,
                 maxLines: 2,
-                decoration: inputDec('Notes / details'),
+                decoration: inputDec('Notes (optional)'),
               ),
             ],
           ),
@@ -492,34 +583,24 @@ class _ReminderEditorDialogState extends State<_ReminderEditorDialog> {
         FilledButton.icon(
           onPressed: _save,
           icon: const Icon(Icons.save_rounded),
-          label: const Text('Update Alarm'),
+          label: const Text('Update'),
         ),
       ],
     );
   }
 
-  String _alarmTypeLabel(AlarmType type) => switch (type) {
+  String _typeLabel(AlarmType t) => switch (t) {
         AlarmType.medicine => 'Medicine',
         AlarmType.food => 'Food',
-        AlarmType.memoryActivity => 'Memory Activity',
-        AlarmType.customTask => 'Specific Task',
-      };
-
-  IconData _alarmTypeIcon(AlarmType type) => switch (type) {
-        AlarmType.medicine => Icons.medication_rounded,
-        AlarmType.food => Icons.restaurant_rounded,
-        AlarmType.memoryActivity => Icons.psychology_rounded,
-        AlarmType.customTask => Icons.task_alt_rounded,
+        AlarmType.memoryActivity => 'Memory',
+        AlarmType.customTask => 'Task',
       };
 }
 
-// =============================================================================
-// TIME PICKER TILE
-// =============================================================================
-class _TimePickerTile extends StatelessWidget {
+class _TimeTile extends StatelessWidget {
   final TimeOfDay time;
   final VoidCallback onTap;
-  const _TimePickerTile({required this.time, required this.onTap});
+  const _TimeTile({required this.time, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -528,34 +609,31 @@ class _TimePickerTile extends StatelessWidget {
     final period = time.period == DayPeriod.pm ? 'PM' : 'AM';
     return Material(
       color: cDeep,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           child: Row(
             children: [
-              const Icon(
-                Icons.access_time_filled_rounded,
-                color: cSoft,
-                size: 34,
-              ),
-              const SizedBox(width: 16),
+              const Icon(Icons.access_time_filled_rounded,
+                  color: cSoft, size: 30),
+              const SizedBox(width: 14),
               Text(
-                '$hour:${minute.padLeft(2, '0')}',
+                '$hour:$minute',
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 36,
+                  fontSize: 32,
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Text(
                 period,
                 style: const TextStyle(
                   color: cSoft,
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -567,159 +645,4 @@ class _TimePickerTile extends StatelessWidget {
       ),
     );
   }
-}
-
-// =============================================================================
-// REMINDER CARD (list item)
-// =============================================================================
-class _ReminderCard extends StatelessWidget {
-  final AlarmReminder reminder;
-  final String repeatLabel;
-  final String typeLabel;
-  final ValueChanged<bool> onToggle;
-  final VoidCallback onDelete;
-  final VoidCallback onTap;
-
-  const _ReminderCard({
-    required this.reminder,
-    required this.repeatLabel,
-    required this.typeLabel,
-    required this.onToggle,
-    required this.onDelete,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final medicine = reminder.alarmType == AlarmType.medicine &&
-            reminder.medicineTiming != null
-        ? ' • ${reminder.medicineTiming == MedicineTiming.beforeFood ? 'Before food' : 'After food'}'
-        : '';
-
-    return Material(
-      color: cWhite,
-      borderRadius: BorderRadius.circular(22),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: cBorder),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 62,
-                height: 62,
-                decoration: BoxDecoration(
-                  color: cSoft,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: const Icon(
-                  Icons.alarm_rounded,
-                  color: cPrimaryDark,
-                  size: 34,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      reminder.title,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                        color: cText,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${reminder.hour.toString().padLeft(2, '0')}:'
-                      '${reminder.minute.toString().padLeft(2, '0')} '
-                      '${reminder.amPm}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: cPrimaryDark,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '$typeLabel • $repeatLabel$medicine',
-                      style: const TextStyle(
-                        color: cMuted,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (reminder.detail.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        reminder.detail,
-                        style: const TextStyle(color: cMuted),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              Column(
-                children: [
-                  Switch(
-                    value: reminder.isActive,
-                    onChanged: onToggle,
-                  ),
-                  IconButton(
-                    onPressed: onDelete,
-                    icon: const Icon(
-                      Icons.delete_outline_rounded,
-                      color: cDanger,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// EMPTY REMINDERS
-// =============================================================================
-class _EmptyReminders extends StatelessWidget {
-  const _EmptyReminders();
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(30),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              Icon(Icons.alarm_add_rounded, size: 64, color: cPrimaryDark),
-              SizedBox(height: 12),
-              Text(
-                'No alarms yet',
-                style: TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.w900,
-                  color: cDeep,
-                ),
-              ),
-              SizedBox(height: 6),
-              Text(
-                'Tap "+ New Reminder" below and speak your reminder — or use the mic in the AI Reminder bar on Home.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: cMuted, height: 1.4),
-              ),
-            ],
-          ),
-        ),
-      );
 }

@@ -1,5 +1,5 @@
 name: smaran_flutter
-description: Smaran - dementia-friendly memory assistance platform, Flutter conversion.
+description: Smaran - dementia-friendly memory assistance platform.
 publish_to: none
 version: 1.0.0+1
 
@@ -20,8 +20,15 @@ dependencies:
   timezone: 0.11.1
   flutter_svg: ^2.0.10
   font_awesome_flutter: ^10.7.0
-  permission_handler: ^12.0.1
   speech_to_text: ^7.0.0
+  url_launcher: ^6.3.0
+  http: ^1.2.0
+
+  # Radio architecture
+  just_audio: ^0.9.42
+  just_audio_background: ^0.0.1-beta.13
+  audio_session: ^0.1.21
+  path_provider: ^2.1.4
 
 dev_dependencies:
   flutter_test:

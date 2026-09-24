@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/auth/auth_store.dart';
 import '../../core/domain/app_models.dart';
-import '../../core/services/alarm_service.dart';
+import '../../core/localization/app_localizations.dart';
+import '../profile/profile_screen.dart';
 import '../reminders/reminder_screen.dart';
 
 // =============================================================================
@@ -17,9 +19,8 @@ const _cPrimaryDark = Color(0xFF4F743D);
 const _cPrimarySoft = Color(0xFFE5F0D8);
 const _cText = Color(0xFF26332E);
 const _cMuted = Color(0xFF6D746E);
+const _cBorder = Color(0xFFE6DED0);
 const _cDanger = Color(0xFFC64A4A);
-const _cRemindButton = Color(0xFFE49A1E);
-const _cDoneButton = Color(0xFF4F9A42);
 const _shadowColor = Color(0x1A7A694E);
 
 // =============================================================================
@@ -42,40 +43,40 @@ class _FeatureItem {
   });
 }
 
-const _featureData = <_FeatureItem>[
-  _FeatureItem(
-    key: 'daily',
-    iconAsset: 'assets/icons/daily_task.svg',
-    title: 'Your Daily Task',
-    subtitle: 'Cognitive Memory Game (0/5)',
-    background: _cPrimarySoft,
-    route: 'games',
-  ),
-  _FeatureItem(
-    key: 'garden',
-    iconAsset: 'assets/icons/memory_garden.svg',
-    title: 'Memory Garden',
-    subtitle: 'Memory Assistant',
-    background: Color(0xFFF6DCDD),
-    route: 'talk',
-  ),
-  _FeatureItem(
-    key: 'lane',
-    iconAsset: 'assets/icons/take_a_trip_down_to_your_memory-lane.svg',
-    title: 'Take a Trip Down Your Memory Lane',
-    subtitle: 'Your Past Memories',
-    background: Color(0xFFDCECF2),
-    route: 'photos',
-  ),
-  _FeatureItem(
-    key: 'scheduled',
-    iconAsset: 'assets/icons/scheduled.svg',
-    title: 'Scheduled',
-    subtitle: 'Your Daily Routine',
-    background: Color(0xFFF5E6C7),
-    route: 'reminders',
-  ),
-];
+List<_FeatureItem> _buildFeatureData(L l) => [
+      _FeatureItem(
+        key: 'daily',
+        iconAsset: 'assets/icons/daily_task.svg',
+        title: l.yourDailyTask,
+        subtitle: l.dailyTaskSub,
+        background: _cPrimarySoft,
+        route: 'games',
+      ),
+      _FeatureItem(
+        key: 'garden',
+        iconAsset: 'assets/icons/memory_garden.svg',
+        title: l.memoryGarden,
+        subtitle: l.memoryGardenSub,
+        background: const Color(0xFFF6DCDD),
+        route: 'talk',
+      ),
+      _FeatureItem(
+        key: 'lane',
+        iconAsset: 'assets/icons/take_a_trip_down_to_your_memory-lane.svg',
+        title: l.memoryLane,
+        subtitle: l.memoryLaneSub,
+        background: const Color(0xFFDCECF2),
+        route: 'photos',
+      ),
+      _FeatureItem(
+        key: 'scheduled',
+        iconAsset: 'assets/icons/scheduled.svg',
+        title: l.scheduled,
+        subtitle: l.scheduledSub,
+        background: const Color(0xFFF5E6C7),
+        route: 'reminders',
+      ),
+    ];
 
 // =============================================================================
 // HOME SCREEN
@@ -104,7 +105,21 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    widget.store.addListener(_rebuild);
+    AuthStore.instance.addListener(_rebuild);
     _tick();
+  }
+
+  @override
+  void dispose() {
+    widget.store.removeListener(_rebuild);
+    AuthStore.instance.removeListener(_rebuild);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _rebuild() {
+    if (mounted) setState(() {});
   }
 
   void _tick() async {
@@ -114,24 +129,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _tick();
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  // ── Derived values ───────────────────────────────────────────
   String get _firstName {
-    final raw = widget.store.patientName.trim();
+    final user = AuthStore.instance.currentUser;
+    final raw = (user?.fullName ?? widget.store.patientName).trim();
     if (raw.isEmpty) return 'Patient';
     return raw.split(RegExp(r'\s+')).first;
   }
 
   String get _greeting {
+    final l = L.current;
     final h = _now.hour;
-    if (h >= 5 && h < 12) return 'Good Morning';
-    if (h >= 12 && h < 17) return 'Good Afternoon';
-    return 'Good Evening';
+    if (h >= 5 && h < 12) return l.goodMorning;
+    if (h >= 12 && h < 17) return l.goodAfternoon;
+    return l.goodEvening;
   }
 
   bool get _isDaytime => _now.hour >= 6 && _now.hour < 18;
@@ -159,14 +169,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<AlarmReminder> get _todayPlan => _activeReminders.take(2).toList();
   int get _pendingCount => _activeReminders.length;
-  int get _completedGamesCount =>
-      widget.store.reminders.where((r) => r.done).length.clamp(0, 5);
+  int get _completedGamesCount => widget.store.gamesCompletedToday();
 
-  // ── Actions ──────────────────────────────────────────────────
   Future<void> _openReminders() async {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => RemindersScreen(store: widget.store)),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openProfile() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProfileScreen()),
     );
     if (mounted) setState(() {});
   }
@@ -214,55 +230,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Toggle done ↔ pending.
-  ///
-  /// When marked done:
-  ///   - reminder.done = true
-  ///   - reminder.isActive = false  ← so Reminders screen switch flips OFF
-  ///   - alarm cancelled
-  ///
-  /// When un-marked:
-  ///   - reminder.done = false
-  ///   - reminder.isActive = true   ← so Reminders screen switch flips ON
-  ///   - alarm rescheduled
-  Future<void> _toggleReminder(AlarmReminder reminder) async {
-    final markDone = !reminder.done;
-
-    reminder.done = markDone;
-    // Sync the active flag too, so Reminders screen stays in sync.
-    reminder.isActive = !markDone;
-
-    if (markDone) {
-      await AlarmService.cancel(reminder.id);
-    } else {
-      try {
-        await AlarmService.schedule(reminder);
-      } catch (_) {}
-    }
-
-    await widget.store.save();
-    if (!mounted) return;
-    setState(() {});
-
-    if (markDone) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Great! "${reminder.title}" marked as done.'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: _cPrimaryDark,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  // ── Build ────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final l = L.current;
     final media = MediaQuery.of(context);
     final w = media.size.width;
     final h = media.size.height;
     final scale = math.min(w / 449.0, h / 900.0).clamp(0.92, 1.10);
+
+    // Consistent spacing — same gap everywhere in the plan section.
+    final gap = 12 * scale;
 
     return Scaffold(
       backgroundColor: _cBg,
@@ -271,7 +248,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
           padding: EdgeInsets.fromLTRB(
-            16 * scale, 14 * scale, 16 * scale, 20 * scale,
+            16 * scale, 14 * scale, 16 * scale, 16 * scale,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -286,28 +263,28 @@ class _HomeScreenState extends State<HomeScreen> {
                   date: _formattedDate,
                   pendingCount: _pendingCount,
                   onBellTap: _openReminders,
+                  onProfileTap: _openProfile,
                 ),
               ),
 
               _FeatureGrid(
                 scale: scale,
-                items: _featureData,
+                items: _buildFeatureData(l),
                 onTap: _handleFeaturePress,
               ),
 
-              SizedBox(height: 17 * scale),
+              SizedBox(height: gap),
 
               _AnimatedEntry(
                 delayMs: 570,
                 child: _ProgressBanner(
                   scale: scale,
                   completed: _completedGamesCount,
-                  total: 5,
                   onTap: () => widget.onOpenFeature('games'),
                 ),
               ),
 
-              SizedBox(height: 20 * scale),
+              SizedBox(height: 16 * scale),
 
               _AnimatedEntry(
                 delayMs: 650,
@@ -319,6 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
               SizedBox(height: 10 * scale),
 
+              // ── Today's Plan list ──────────────────────────
               if (_todayPlan.isEmpty)
                 _AnimatedEntry(
                   delayMs: 720,
@@ -327,20 +305,17 @@ class _HomeScreenState extends State<HomeScreen> {
               else
                 for (int i = 0; i < _todayPlan.length; i++)
                   Padding(
-                    padding: EdgeInsets.only(bottom: 6 * scale),
+                    padding: EdgeInsets.only(bottom: gap),
                     child: _AnimatedEntry(
                       delayMs: 720 + (i * 100),
                       child: _PlanCard(
                         scale: scale,
                         reminder: _todayPlan[i],
-                        onToggle: () => _toggleReminder(_todayPlan[i]),
                       ),
                     ),
                   ),
 
-              // Tight gap — no more floating whitespace above composer
-              SizedBox(height: 6 * scale),
-
+              // ── AI search bar — SAME gap as between cards ──
               _AnimatedEntry(
                 delayMs: 900,
                 child: _AiReminderSection(
@@ -430,6 +405,7 @@ class _Header extends StatelessWidget {
   final String date;
   final int pendingCount;
   final VoidCallback onBellTap;
+  final VoidCallback onProfileTap;
 
   const _Header({
     required this.scale,
@@ -439,10 +415,12 @@ class _Header extends StatelessWidget {
     required this.date,
     required this.pendingCount,
     required this.onBellTap,
+    required this.onProfileTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final l = L.current;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -452,7 +430,7 @@ class _Header extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Hello,',
+                l.hello,
                 style: TextStyle(
                   fontSize: 31 * scale,
                   height: 36 / 31,
@@ -520,7 +498,7 @@ class _Header extends StatelessWidget {
             ],
           ),
         ),
-        SizedBox(width: 10 * scale),
+        SizedBox(width: 8 * scale),
         Material(
           color: _cWhite,
           borderRadius: BorderRadius.circular(20 * scale),
@@ -530,24 +508,24 @@ class _Header extends StatelessWidget {
             onTap: onBellTap,
             borderRadius: BorderRadius.circular(20 * scale),
             child: SizedBox(
-              width: 57 * scale,
-              height: 57 * scale,
+              width: 52 * scale,
+              height: 52 * scale,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
                   Icon(
                     Icons.notifications_none_rounded,
-                    size: 29 * scale,
+                    size: 26 * scale,
                     color: _cPrimaryDark,
                   ),
                   if (pendingCount > 0)
                     Positioned(
-                      right: 5 * scale,
+                      right: 4 * scale,
                       top: 4 * scale,
                       child: Container(
                         constraints: BoxConstraints(
-                          minWidth: 19 * scale,
-                          minHeight: 19 * scale,
+                          minWidth: 18 * scale,
+                          minHeight: 18 * scale,
                         ),
                         padding: EdgeInsets.symmetric(horizontal: 4 * scale),
                         alignment: Alignment.center,
@@ -567,6 +545,26 @@ class _Header extends StatelessWidget {
                       ),
                     ),
                 ],
+              ),
+            ),
+          ),
+        ),
+        SizedBox(width: 8 * scale),
+        Material(
+          color: _cWhite,
+          borderRadius: BorderRadius.circular(20 * scale),
+          elevation: 3,
+          shadowColor: _shadowColor,
+          child: InkWell(
+            onTap: onProfileTap,
+            borderRadius: BorderRadius.circular(20 * scale),
+            child: SizedBox(
+              width: 52 * scale,
+              height: 52 * scale,
+              child: Icon(
+                Icons.person_outline_rounded,
+                size: 26 * scale,
+                color: _cPrimaryDark,
               ),
             ),
           ),
@@ -655,7 +653,7 @@ class _FeatureTile extends StatelessWidget {
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: 142 * scale),
           child: Padding(
-            padding: EdgeInsets.all(14 * scale),
+            padding: EdgeInsets.all(11 * scale),
             child: Stack(
               children: [
                 Column(
@@ -734,95 +732,97 @@ class _FeatureTile extends StatelessWidget {
 }
 
 // =============================================================================
-// PROGRESS BANNER
+// PROGRESS BANNER — thinner, correct interpolation
 // =============================================================================
 class _ProgressBanner extends StatelessWidget {
   final double scale;
   final int completed;
-  final int total;
   final VoidCallback onTap;
 
   const _ProgressBanner({
     required this.scale,
     required this.completed,
-    required this.total,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    // FIXED: no "1 5 of 5". Uses only `completed`.
+    final text = '${L.current.greatJobPrefix} $completed ${L.current.ofGamesToday}';
+
     return Material(
       color: const Color(0xFFE2F1D6),
-      borderRadius: BorderRadius.circular(21 * scale),
-      elevation: 3,
+      borderRadius: BorderRadius.circular(18 * scale),
+      elevation: 2,
       shadowColor: _shadowColor,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(21 * scale),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: 78 * scale),
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12 * scale),
-            child: Row(
-              children: [
-                Container(
-                  width: 51 * scale,
-                  height: 51 * scale,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFD8EAC9),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.favorite_border_rounded,
-                    size: 27 * scale,
-                    color: _cPrimaryDark,
-                  ),
+        borderRadius: BorderRadius.circular(18 * scale),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: 12 * scale,
+            vertical: 10 * scale,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42 * scale,
+                height: 42 * scale,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFD8EAC9),
+                  shape: BoxShape.circle,
                 ),
-                SizedBox(width: 10 * scale),
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(right: 5 * scale),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Great job! You completed $completed of $total games today.',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14 * scale,
-                            height: 18 / 14,
-                            fontWeight: FontWeight.w900,
-                            color: _cPrimaryDark,
-                          ),
+                child: Icon(
+                  Icons.favorite_border_rounded,
+                  size: 22 * scale,
+                  color: _cPrimaryDark,
+                ),
+              ),
+              SizedBox(width: 10 * scale),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: 5 * scale),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        text,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13.5 * scale,
+                          height: 17 / 13.5,
+                          fontWeight: FontWeight.w900,
+                          color: _cPrimaryDark,
                         ),
-                        SizedBox(height: 2 * scale),
-                        Text(
-                          'Keep your mind active with a little practice.',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 10 * scale,
-                            height: 14 / 10,
-                            fontWeight: FontWeight.w700,
-                            color: _cMuted,
-                          ),
+                      ),
+                      SizedBox(height: 1 * scale),
+                      Text(
+                        L.current.keepMindActive,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10 * scale,
+                          height: 13 / 10,
+                          fontWeight: FontWeight.w700,
+                          color: _cMuted,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  '›',
-                  style: TextStyle(
-                    fontSize: 30 * scale,
-                    height: 1,
-                    color: _cPrimaryDark,
-                  ),
+              ),
+              Text(
+                '›',
+                style: TextStyle(
+                  fontSize: 26 * scale,
+                  height: 1,
+                  color: _cPrimaryDark,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -841,11 +841,12 @@ class _PlanHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.current;
     return Row(
       children: [
         Expanded(
           child: Text(
-            "Today's Plan",
+            l.todaysPlan,
             style: TextStyle(
               fontSize: 26 * scale,
               height: 31 / 26,
@@ -872,7 +873,7 @@ class _PlanHeader extends StatelessWidget {
                 ),
                 SizedBox(width: 5 * scale),
                 Text(
-                  'Full Schedule',
+                  l.fullSchedule,
                   style: TextStyle(
                     fontSize: 11 * scale,
                     color: _cPrimaryDark,
@@ -889,18 +890,81 @@ class _PlanHeader extends StatelessWidget {
 }
 
 // =============================================================================
-// PLAN CARD — thin & clean
+// PLAN CARD — type-specific icon, display-only, no toggle
 // =============================================================================
+
 class _PlanCard extends StatelessWidget {
   final double scale;
   final AlarmReminder reminder;
-  final VoidCallback onToggle;
 
   const _PlanCard({
     required this.scale,
     required this.reminder,
-    required this.onToggle,
   });
+
+  /// Return the icon for this reminder based on its type.
+  /// For custom tasks, we infer from the title's keywords.
+  IconData get _typeIcon {
+    if (reminder.alarmType == AlarmType.medicine) {
+      return Icons.medication_rounded;
+    }
+    if (reminder.alarmType == AlarmType.food) {
+      return Icons.restaurant_rounded;
+    }
+    if (reminder.alarmType == AlarmType.memoryActivity) {
+      return Icons.psychology_rounded;
+    }
+
+    // Custom task — infer from title
+    final t = reminder.title.toLowerCase();
+    if (t.contains('water') ||
+        t.contains('drink') ||
+        t.contains('hydrat') ||
+        t.contains('পানি') ||
+        t.contains('জল') ||
+        t.contains('पानी')) {
+      return Icons.local_drink_rounded;
+    }
+    if (t.contains('music') ||
+        t.contains('song') ||
+        t.contains('radio') ||
+        t.contains('গান') ||
+        t.contains('संगीत')) {
+      return Icons.music_note_rounded;
+    }
+    return Icons.task_alt_rounded;
+  }
+
+  /// Background color for the icon circle.
+  Color get _typeColor {
+    if (reminder.alarmType == AlarmType.medicine) {
+      return const Color(0xFFE5F0D8);
+    }
+    if (reminder.alarmType == AlarmType.food) {
+      return const Color(0xFFF5E6C7);
+    }
+    if (reminder.alarmType == AlarmType.memoryActivity) {
+      return const Color(0xFFF6DCDD);
+    }
+
+    final t = reminder.title.toLowerCase();
+    if (t.contains('water') ||
+        t.contains('drink') ||
+        t.contains('hydrat') ||
+        t.contains('পানি') ||
+        t.contains('जल') ||
+        t.contains('पानी')) {
+      return const Color(0xFFDCECF2);
+    }
+    if (t.contains('music') ||
+        t.contains('song') ||
+        t.contains('radio') ||
+        t.contains('গান') ||
+        t.contains('संगीत')) {
+      return const Color(0xFFECE6F1);
+    }
+    return const Color(0xFFE4F1D8);
+  }
 
   String get _timeLabel {
     var hour = reminder.hour;
@@ -915,158 +979,92 @@ class _PlanCard extends StatelessWidget {
 
   String get _detailLabel {
     final d = reminder.detail.trim();
-    if (d.isEmpty) return 'Smaran reminder';
+    if (d.isEmpty) return L.current.smaranReminder;
     return d;
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDone = reminder.done;
-
-    return SizedBox(
-      // Thin card
-      height: 68 * scale,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Container(
+    return Material(
+      color: _cWhite,
+      borderRadius: BorderRadius.circular(16 * scale),
+      elevation: 2,
+      shadowColor: _shadowColor,
+      child: Container(
+        padding: EdgeInsets.all(14 * scale),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16 * scale),
+          border: Border.all(color: _cBorder, width: 1.1),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // ── Type-specific icon circle ─────────────────
+            Container(
+              width: 46 * scale,
+              height: 46 * scale,
               decoration: BoxDecoration(
-                color: _cWhite,
-                borderRadius: BorderRadius.circular(14 * scale),
-                boxShadow: const [
-                  BoxShadow(
-                    color: _shadowColor,
-                    blurRadius: 6,
-                    offset: Offset(0, 2),
-                  ),
-                ],
+                color: _typeColor,
+                shape: BoxShape.circle,
               ),
-              padding: EdgeInsets.symmetric(
-                horizontal: 10 * scale,
-                vertical: 6 * scale,
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Left circular icon — smaller
-                  Container(
-                    width: 38 * scale,
-                    height: 38 * scale,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE3F0D7),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      isDone
-                          ? Icons.check_rounded
-                          : Icons.access_time_rounded,
-                      size: 18 * scale,
-                      color: _cPrimaryDark,
-                    ),
-                  ),
-                  SizedBox(width: 10 * scale),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(right: 92 * scale),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _timeLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 9 * scale,
-                              height: 12 / 9,
-                              fontWeight: FontWeight.w700,
-                              color: _cMuted,
-                            ),
-                          ),
-                          SizedBox(height: 1 * scale),
-                          Text(
-                            reminder.title.isEmpty
-                                ? 'Reminder'
-                                : reminder.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13 * scale,
-                              height: 16 / 13,
-                              fontWeight: FontWeight.w900,
-                              color: isDone ? _cMuted : _cText,
-                              decoration: isDone
-                                  ? TextDecoration.lineThrough
-                                  : TextDecoration.none,
-                            ),
-                          ),
-                          SizedBox(height: 1 * scale),
-                          Text(
-                            _detailLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 8.5 * scale,
-                              height: 11 / 8.5,
-                              color: _cMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+              child: Icon(
+                _typeIcon,
+                size: 24 * scale,
+                color: _cPrimaryDark,
               ),
             ),
-          ),
 
-          // Right button — thin pill
-          Positioned(
-            top: 16 * scale,
-            right: 10 * scale,
-            bottom: 16 * scale,
-            width: 80 * scale,
-            child: Material(
-              color: isDone ? _cDoneButton : _cRemindButton,
-              borderRadius: BorderRadius.circular(11 * scale),
-              child: InkWell(
-                onTap: onToggle,
-                borderRadius: BorderRadius.circular(11 * scale),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6 * scale),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        isDone
-                            ? Icons.check_circle_rounded
-                            : Icons.notifications_none_rounded,
-                        size: 12 * scale,
-                        color: Colors.white,
-                      ),
-                      SizedBox(width: 4 * scale),
-                      Flexible(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            isDone ? "I'm Done" : 'Remind Me',
-                            maxLines: 1,
-                            style: TextStyle(
-                              fontSize: 9.5 * scale,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+            SizedBox(width: 14 * scale),
+
+            // ── Time + Title + Detail ────────────────────
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _timeLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13 * scale,
+                      height: 16 / 13,
+                      fontWeight: FontWeight.w900,
+                      color: _cPrimaryDark,
+                      letterSpacing: 0.2,
+                    ),
                   ),
-                ),
+                  SizedBox(height: 3 * scale),
+                  Text(
+                    reminder.title.isEmpty
+                        ? L.current.smaranReminder
+                        : reminder.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15.5 * scale,
+                      height: 19 / 15.5,
+                      fontWeight: FontWeight.w900,
+                      color: _cText,
+                    ),
+                  ),
+                  SizedBox(height: 2 * scale),
+                  Text(
+                    _detailLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5 * scale,
+                      height: 15 / 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: _cMuted,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1083,51 +1081,52 @@ class _EmptyPlan extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.current;
     return Material(
       color: _cWhite,
       borderRadius: BorderRadius.circular(16 * scale),
-      elevation: 3,
+      elevation: 2,
       shadowColor: _shadowColor,
       child: InkWell(
         onTap: onAdd,
         borderRadius: BorderRadius.circular(16 * scale),
         child: Padding(
-          padding: EdgeInsets.all(11 * scale),
+          padding: EdgeInsets.all(16 * scale),
           child: Row(
             children: [
               Container(
-                width: 42 * scale,
-                height: 42 * scale,
+                width: 46 * scale,
+                height: 46 * scale,
                 decoration: const BoxDecoration(
                   color: _cPrimarySoft,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.calendar_month_rounded,
-                  size: 20 * scale,
+                  size: 22 * scale,
                   color: _cPrimaryDark,
                 ),
               ),
-              SizedBox(width: 10 * scale),
+              SizedBox(width: 12 * scale),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Nothing scheduled yet',
+                      l.nothingScheduled,
                       style: TextStyle(
-                        fontSize: 13.5 * scale,
+                        fontSize: 15 * scale,
                         fontWeight: FontWeight.w900,
                         color: _cText,
                       ),
                     ),
-                    SizedBox(height: 2 * scale),
+                    SizedBox(height: 3 * scale),
                     Text(
-                      "Add a reminder to build today's plan.",
+                      l.addReminderHint,
                       style: TextStyle(
-                        fontSize: 9.5 * scale,
-                        height: 13 / 9.5,
+                        fontSize: 11 * scale,
+                        height: 14 / 11,
                         color: _cMuted,
                       ),
                     ),
@@ -1151,7 +1150,7 @@ class _EmptyPlan extends StatelessWidget {
 }
 
 // =============================================================================
-// AI REMINDER SECTION
+// AI REMINDER COMPOSER
 // =============================================================================
 class _AiReminderSection extends StatelessWidget {
   final double scale;
@@ -1170,6 +1169,7 @@ class _AiReminderSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.current;
     return Material(
       color: _cWhite,
       borderRadius: BorderRadius.circular(31 * scale),
@@ -1201,7 +1201,7 @@ class _AiReminderSection extends StatelessWidget {
                 textInputAction: TextInputAction.send,
                 style: TextStyle(fontSize: 15 * scale, color: _cText),
                 decoration: InputDecoration(
-                  hintText: 'Ask me about your reminders...',
+                  hintText: l.askReminders,
                   hintStyle: TextStyle(fontSize: 14 * scale, color: _cMuted),
                   border: InputBorder.none,
                   isDense: true,

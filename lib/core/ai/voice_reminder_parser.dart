@@ -6,10 +6,7 @@ import '../domain/app_models.dart';
 class VoiceReminderParser {
   VoiceReminderParser._();
 
-  /// Words that appear in a spoken command but are NOT part of the reminder
-  /// title. These get stripped from the parsed title.
   static const _instructionWords = <String>[
-    // English
     'please',
     'can you',
     'could you',
@@ -28,7 +25,6 @@ class VoiceReminderParser {
     'alarm',
     'reminder for',
     'reminder',
-    // Bengali
     'দয়া করে',
     'অনুগ্রহ করে',
     'সেট',
@@ -39,7 +35,6 @@ class VoiceReminderParser {
     'মনে করিয়ে',
     'রিমাইন্ডার',
     'অ্যালার্ম',
-    // Hindi
     'कृपया',
     'सेट',
     'सेट करें',
@@ -49,7 +44,6 @@ class VoiceReminderParser {
     'याद दिलाएं',
     'रिमाइंडर',
     'अलार्म',
-    // Assamese
     'অনুগ্ৰহ কৰি',
     'ছেট',
     'ছেট কৰক',
@@ -61,17 +55,20 @@ class VoiceReminderParser {
     'এলাৰম',
   ];
 
-  static AlarmReminder? parse(String transcript, {required int nextId}) {
+  static AlarmReminder? parse(
+    String transcript, {
+    required int nextId,
+    String languageKey = 'english',
+  }) {
     final text = transcript.trim();
     if (text.isEmpty) return null;
 
     final lower = text.toLowerCase();
 
-    // ── 1. Detect alarm type ─────────────────────────────────
     AlarmType type = AlarmType.customTask;
     if (_containsAny(lower, [
       'medicine', 'tablet', 'pill', 'medication', 'dose',
-      'ঔষধ', 'ওষুধ', 'मेडिसिन', 'दवा', 'दवाई', 'औषध', 'ঔষধ',
+      'ঔষধ', 'ওষুধ', 'मेडिसिन', 'दवा', 'दवाई', 'औषध',
     ])) {
       type = AlarmType.medicine;
     } else if (_containsAny(lower, [
@@ -86,12 +83,11 @@ class VoiceReminderParser {
       type = AlarmType.memoryActivity;
     }
 
-    // ── 2. Medicine timing ───────────────────────────────────
     MedicineTiming? medicineTiming;
     if (type == AlarmType.medicine) {
       if (_containsAny(lower, [
         'before food', 'before meal', 'before eating',
-        'খাবারের আগে', 'খাওয়ার আগে', 'खाने से पहले', 'खोৱাৰ আগতে',
+        'খাবারের আগে', 'খাওয়ার আগে', 'खाने से पहले', 'খোৱাৰ আগতে',
       ])) {
         medicineTiming = MedicineTiming.beforeFood;
       } else {
@@ -99,7 +95,6 @@ class VoiceReminderParser {
       }
     }
 
-    // ── 3. Repeat ────────────────────────────────────────────
     RepeatType repeat = RepeatType.daily;
     if (_containsAny(lower, [
       'once', 'one time', 'only today', 'today only', 'just once',
@@ -108,11 +103,9 @@ class VoiceReminderParser {
       repeat = RepeatType.once;
     }
 
-    // ── 4. Time ──────────────────────────────────────────────
     final timeResult = _extractTime(text);
     if (timeResult == null) return null;
 
-    // ── 5. Title (stripped of instruction words) ─────────────
     final title = _buildTitle(text, type);
 
     return AlarmReminder(
@@ -124,12 +117,11 @@ class VoiceReminderParser {
       repeatType: repeat,
       alarmType: type,
       medicineTiming: medicineTiming,
+      language: languageKey,
     );
   }
 
-  // ── Time extraction ───────────────────────────────────────
   static ({int hour, int minute, String amPm})? _extractTime(String text) {
-    // English: "10 A.M", "10:30 PM"
     final enMatch = RegExp(
       r'(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)',
       caseSensitive: false,
@@ -147,7 +139,6 @@ class VoiceReminderParser {
       );
     }
 
-    // Bengali digits → ASCII
     final normalized = text
         .replaceAll('০', '0').replaceAll('১', '1').replaceAll('২', '2')
         .replaceAll('৩', '3').replaceAll('৪', '4').replaceAll('৫', '5')
@@ -182,40 +173,53 @@ class VoiceReminderParser {
     return null;
   }
 
-  // ── Title builder (strips instruction words) ──────────────
   static String _buildTitle(String text, AlarmType type) {
-    // 1. Remove time expressions
-    var cleaned = text
+    var cleaned = text;
+
+    cleaned = cleaned.replaceAll(
+      RegExp(r'\b\d{1,2}(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)\b',
+          caseSensitive: false),
+      ' ',
+    );
+
+    cleaned = cleaned
+        .replaceAll('০', '0').replaceAll('১', '1').replaceAll('২', '2')
+        .replaceAll('৩', '3').replaceAll('৪', '4').replaceAll('৫', '5')
+        .replaceAll('৬', '6').replaceAll('৭', '7').replaceAll('৮', '8')
+        .replaceAll('৯', '9');
+
+    cleaned = cleaned
         .replaceAll(
-          RegExp(r'\b\d{1,2}(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)\b',
-              caseSensitive: false),
+          RegExp(r'\d{1,2}(?::\d{2})?\s*(টার জন্য|টার|টায়|টাতে|ঘটিকায়|বাজে|ঘটিকা)'),
           ' ',
         )
         .replaceAll(
-          RegExp(r'\b\d{1,2}(?::\d{2})?\s*(টা|টায়|বাজে|बजे|ঘটিকা)\b'),
+          RegExp(r'\d{1,2}(?::\d{2})?\s*(बजे के लिए|बजे|के लिए|पर)'),
           ' ',
         )
         .replaceAll(
-          RegExp(r'\b\d{1,2}(?::\d{2})?\b'),
+          RegExp(r'\d{1,2}(?::\d{2})?\s*(বজাত|বজাৰ বাবে|বজাৰ|বজাতীয়)'),
           ' ',
         );
 
-    // 2. Remove "at", "for", "on", "to", "about"
+    cleaned = cleaned.replaceAll(
+      RegExp(r'\b\d{1,2}(?::\d{2})?\b'),
+      ' ',
+    );
+
     cleaned = cleaned.replaceAll(
       RegExp(r'\b(at|for|on|to|about|@)\b', caseSensitive: false),
       ' ',
     );
 
-    // 3. Remove Bengali/Hindi/Assamese time-of-day words
     for (final word in [
-      'সকাল', 'দুপুর', 'বিকাল', 'সন্ধ্যা', 'রাত',
-      'सुबह', 'दोपहर', 'शाम', 'रात',
-      'ৰাতিপু', 'ৰাতি', 'পুৱা', 'আবেলি',
+      'সকাল', 'দুপুর', 'বিকাল', 'বিকেল', 'সন্ধ্যা', 'রাত', 'ভোর', 'প্রভাত',
+      'सुबह', 'दोपहर', 'शाम', 'रात', 'संध्या', 'भोर',
+      'ৰাতিপু', 'ৰাতি', 'পুৱা', 'আবেলি', 'সন্ধিয়া',
     ]) {
       cleaned = cleaned.replaceAll(word, ' ');
     }
 
-    // 4. Remove instruction words (case-insensitive)
     final lowerClean = cleaned.toLowerCase();
     for (final instr in _instructionWords) {
       if (lowerClean.contains(instr)) {
@@ -226,20 +230,25 @@ class VoiceReminderParser {
       }
     }
 
-    // 5. Collapse whitespace
     cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
 
-    // 6. Strip leading "for/to/about" leftovers
     cleaned = cleaned
-        .replaceAll(RegExp(r'^(for|to|about|at|on)\s+', caseSensitive: false), '')
+        .replaceAll(
+          RegExp(r'^(for|to|about|at|on|জন্য|लिए|বাবে|লৈ)\s+',
+              caseSensitive: false),
+          '',
+        )
+        .replaceAll(
+          RegExp(r'\s+(for|to|about|at|on|জন্য|लिए|বাবে|লৈ)$',
+              caseSensitive: false),
+          '',
+        )
         .trim();
 
-    // 7. Capitalize first letter
     if (cleaned.isNotEmpty) {
       cleaned = cleaned[0].toUpperCase() + cleaned.substring(1);
     }
 
-    // 8. If empty, fall back to type-based default
     if (cleaned.isEmpty) {
       return switch (type) {
         AlarmType.medicine => 'Medicine',
@@ -261,14 +270,11 @@ class VoiceReminderParser {
 }
 
 // =============================================================================
-// VOICE QUERY HANDLER — "What's my next reminder?" → spoken answer
+// VOICE QUERY HANDLER
 // =============================================================================
 class VoiceQueryHandler {
   VoiceQueryHandler._();
 
-  /// Returns a localised answer string, or null if the query isn't a
-  /// question the handler recognises (so the caller can fall back to
-  /// the alarm parser).
   static String? respond({
     required String transcript,
     required List<AlarmReminder> reminders,
@@ -280,7 +286,6 @@ class VoiceQueryHandler {
     final pending = reminders.where((r) => r.isActive && !r.done).toList()
       ..sort((a, b) => a.nextSystemDateTime.compareTo(b.nextSystemDateTime));
 
-    // ── "Next reminder" ─────────────────────────────────────
     if (_matches(text, [
       "what's my next reminder", 'what is my next reminder',
       'next reminder', 'my next reminder', 'upcoming reminder',
@@ -306,7 +311,6 @@ class VoiceQueryHandler {
       });
     }
 
-    // ── "All reminders" / "Today's reminders" ───────────────
     if (_matches(text, [
       'all reminders', 'list reminders', 'show reminders',
       'my reminders', "today's reminders", 'today reminders',
@@ -334,7 +338,6 @@ class VoiceQueryHandler {
       });
     }
 
-    // ── "Medicine reminders" ────────────────────────────────
     if (_matches(text, [
       'medicine reminder', 'my medicine', 'medication',
       'ঔষধের রিমাইন্ডার', 'আমার ওষুধ',
@@ -359,7 +362,6 @@ class VoiceQueryHandler {
       });
     }
 
-    // Not a known query
     return null;
   }
 
