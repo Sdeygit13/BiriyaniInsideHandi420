@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
 
 import '../../core/domain/app_models.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/theme/caregiver_theme.dart';
 
-class CaregiverMemoryBankScreen extends StatelessWidget {
+class CaregiverMemoryBankScreen extends StatefulWidget {
   final SmaranStore store;
   const CaregiverMemoryBankScreen({super.key, required this.store});
 
   @override
+  State<CaregiverMemoryBankScreen> createState() =>
+      _CaregiverMemoryBankScreenState();
+}
+
+class _CaregiverMemoryBankScreenState
+    extends State<CaregiverMemoryBankScreen> {
+  @override
   Widget build(BuildContext context) {
-    final people = store.people;
-    final memories = store.memories;
+    final people = widget.store.people;
+    final memories = widget.store.memories;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
@@ -34,13 +42,14 @@ class CaregiverMemoryBankScreen extends StatelessWidget {
                     SizedBox(height: 4),
                     Text(
                       'Manage familiar faces and important memories.',
-                      style: TextStyle(fontSize: 12, color: CG.textMuted),
+                      style: TextStyle(
+                          fontSize: 12, color: CG.textMuted),
                     ),
                   ],
                 ),
               ),
               FilledButton.icon(
-                onPressed: () {},
+                onPressed: () => _addPerson(context),
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: const Text('Add Person',
                     style: TextStyle(fontWeight: FontWeight.w900)),
@@ -93,6 +102,60 @@ class CaregiverMemoryBankScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _addPerson(BuildContext context) async {
+    final nameCtrl = TextEditingController();
+    final relCtrl = TextEditingController();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Add Person',
+            style: TextStyle(
+                fontWeight: FontWeight.w900, color: CG.primary)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              textCapitalization: TextCapitalization.words,
+              decoration: inputDec('Name'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: relCtrl,
+              textCapitalization: TextCapitalization.words,
+              decoration: inputDec('Relation (e.g. Daughter)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: CG.primary),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+    if (nameCtrl.text.trim().isEmpty) return;
+
+    widget.store.people.add(Person(
+      name: nameCtrl.text.trim(),
+      relation: relCtrl.text.trim().isEmpty
+          ? 'Family'
+          : relCtrl.text.trim(),
+    ));
+    await widget.store.save();
+    if (mounted) setState(() {});
   }
 
   Widget _emptyCard(String title, String sub) {
@@ -149,7 +212,9 @@ class _PersonCard extends StatelessWidget {
             ),
             alignment: Alignment.center,
             child: Text(
-              person.name.isNotEmpty ? person.name[0].toUpperCase() : '?',
+              person.name.isNotEmpty
+                  ? person.name[0].toUpperCase()
+                  : '?',
               style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w900,

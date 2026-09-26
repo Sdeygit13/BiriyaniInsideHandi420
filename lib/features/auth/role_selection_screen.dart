@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../core/auth/auth_models.dart';
+import '../../core/auth/auth_store.dart';
+import '../../core/auth/pre_home_state.dart';
 import '../../core/theme/app_theme.dart';
-import 'login_screen.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({super.key});
 
-  void _select(BuildContext context, UserRole role) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => LoginScreen(role: role),
-      ),
-    );
+  Future<void> _select(UserRole role) async {
+    await AuthStore.instance.setPendingRole(role);
+    await AuthStore.instance.setPhase(OnboardingPhase.login);
+    // Router rebuilds → LoginScreen(role).
   }
 
   @override
@@ -28,11 +27,8 @@ class RoleSelectionScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ── Logo ─────────────────────────────────────
                   const Center(child: Logo(size: 72)),
                   const SizedBox(height: 28),
-
-                  // ── Heading ──────────────────────────────────
                   const Text(
                     'How will you use Smaran?',
                     textAlign: TextAlign.center,
@@ -45,43 +41,36 @@ class RoleSelectionScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 10),
-
-                  // ── Subtitle ─────────────────────────────────
                   const Text(
                     'Choose the option that describes you best.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 15,
                       height: 1.4,
-                      letterSpacing: 0,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF5C6360),
                     ),
                   ),
                   const SizedBox(height: 36),
-
-                  // ── Role cards ───────────────────────────────
                   _RoleCard(
                     role: UserRole.patient,
                     icon: Icons.person_rounded,
                     accent: const Color(0xFFE5F0D8),
-                    onTap: () => _select(context, UserRole.patient),
+                    onTap: () => _select(UserRole.patient),
                   ),
                   const SizedBox(height: 14),
-
                   _RoleCard(
                     role: UserRole.caregiver,
                     icon: Icons.medical_services_rounded,
                     accent: const Color(0xFFF5E6C7),
-                    onTap: () => _select(context, UserRole.caregiver),
+                    onTap: () => _select(UserRole.caregiver),
                   ),
                   const SizedBox(height: 14),
-
                   _RoleCard(
                     role: UserRole.family,
                     icon: Icons.groups_rounded,
                     accent: const Color(0xFFF6DCDD),
-                    onTap: () => _select(context, UserRole.family),
+                    onTap: () => _select(UserRole.family),
                   ),
                 ],
               ),
@@ -93,9 +82,9 @@ class RoleSelectionScreen extends StatelessWidget {
   }
 }
 
-// =============================================================================
-// ROLE CARD
-// =============================================================================
+// ─────────────────────────────────────────────────────────────
+// Role card (unchanged from your current version)
+// ─────────────────────────────────────────────────────────────
 
 class _RoleCard extends StatefulWidget {
   final UserRole role;
@@ -153,7 +142,6 @@ class _RoleCardState extends State<_RoleCard> {
               ),
               child: Row(
                 children: [
-                  // Icon container
                   Container(
                     width: 60,
                     height: 60,
@@ -168,8 +156,6 @@ class _RoleCardState extends State<_RoleCard> {
                     ),
                   ),
                   const SizedBox(width: 16),
-
-                  // Title + tagline
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -180,7 +166,6 @@ class _RoleCardState extends State<_RoleCard> {
                           style: const TextStyle(
                             fontSize: 18,
                             height: 1.15,
-                            letterSpacing: -0.2,
                             fontWeight: FontWeight.w900,
                             color: cText,
                           ),
@@ -193,7 +178,6 @@ class _RoleCardState extends State<_RoleCard> {
                           style: const TextStyle(
                             fontSize: 13,
                             height: 1.35,
-                            letterSpacing: 0,
                             fontWeight: FontWeight.w600,
                             color: Color(0xFF5C6360),
                           ),
@@ -202,8 +186,6 @@ class _RoleCardState extends State<_RoleCard> {
                     ),
                   ),
                   const SizedBox(width: 12),
-
-                  // Arrow in soft circle
                   Container(
                     width: 32,
                     height: 32,

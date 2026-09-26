@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import '../../core/auth/auth_service.dart';
 import '../../core/auth/auth_store.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/caregiver_theme.dart';
+import '../caregiver/qr_scanner_screen.dart';
 
-/// Shown to caregivers/family who have no linked patients yet.
-/// Can also be pushed later to add another patient.
 class LinkPatientScreen extends StatefulWidget {
   final bool showBackButton;
-
   const LinkPatientScreen({super.key, this.showBackButton = false});
 
   @override
@@ -17,269 +14,230 @@ class LinkPatientScreen extends StatefulWidget {
 }
 
 class _LinkPatientScreenState extends State<LinkPatientScreen> {
-  final _controller = TextEditingController();
+  final _idCtrl = TextEditingController();
   bool _busy = false;
-  String _error = '';
-  String? _successName;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scanQr());
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _idCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _link() async {
-    FocusScope.of(context).unfocus();
+  Future<void> _scanQr() async {
+    final scanned = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+    );
+    if (scanned == null || !mounted) return;
+    _idCtrl.text = scanned;
+    await _link(scanned);
+  }
 
-    final raw = _controller.text.trim();
-    if (raw.isEmpty) {
-      setState(() => _error = 'Enter a Patient ID.');
-      return;
-    }
-
-    setState(() {
-      _error = '';
-      _busy = true;
-      _successName = null;
-    });
-
+  Future<void> _link(String smrnId) async {
+    setState(() => _busy = true);
     try {
-      await AuthStore.instance.linkPatientById(raw);
-
-      // Look up the patient we just linked to show a friendly confirmation.
-      final patient = AuthService.instance.findByPatientId(raw);
-
+      final ok = await AuthStore.instance.linkPatientBySmrnId(smrnId);
       if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _successName = patient?.fullName ?? 'Patient';
-        _controller.clear();
-      });
-
-      // Give the user a moment to read the confirmation, then leave.
-      await Future.delayed(const Duration(milliseconds: 1400));
+      if (ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Patient linked successfully.'),
+            backgroundColor: CG.primary,
+          ),
+        );
+        if (widget.showBackButton) Navigator.pop(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No patient found with that ID.'),
+            backgroundColor: CG.danger,
+          ),
+        );
+      }
+    } catch (e) {
       if (!mounted) return;
-      Navigator.of(context).popUntil((route) => route.isFirst);
-    } on AuthException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = e.message;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = 'Something went wrong. Please try again.';
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Link failed: $e'),
+            backgroundColor: CG.danger),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final canGoBack = widget.showBackButton &&
-        Navigator.of(context).canPop();
-
     return Scaffold(
-      backgroundColor: cBg,
-      appBar: canGoBack
-          ? AppBar(
-              backgroundColor: cBg,
-              elevation: 0,
-              leading: IconButton(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(
-                  Icons.arrow_back_rounded,
-                  color: cDeep,
-                ),
-              ),
-            )
-          : null,
+      backgroundColor: CG.bg,
+      appBar: AppBar(
+        backgroundColor: CG.bg,
+        elevation: 0,
+        leading: widget.showBackButton
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_rounded,
+                    color: CG.primary),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
+        title: const Text(
+          'Link a Patient',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            color: CG.primary,
+          ),
+        ),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(22, 12, 22, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!canGoBack) const SizedBox(height: 24),
-              const Center(child: Logo(size: 64)),
-              const SizedBox(height: 24),
-              const Text(
-                'Link a Patient',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  color: cDeep,
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: CG.border),
                 ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Enter the SMRN Patient ID shown on your family member\'s '
-                'Smaran account. It looks like SMRN-XXXX-XXXX.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14.5,
-                  height: 1.5,
-                  color: cMuted,
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              TextField(
-                controller: _controller,
-                textAlign: TextAlign.center,
-                textCapitalization: TextCapitalization.characters,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _link(),
-                inputFormatters: [
-                  LengthLimitingTextInputFormatter(14),
-                  _PatientIdFormatter(),
-                ],
-                style: const TextStyle(
-                  fontSize: 22,
-                  letterSpacing: 2,
-                  fontWeight: FontWeight.w900,
-                  color: cDeep,
-                  fontFamily: 'monospace',
-                ),
-                decoration: InputDecoration(
-                  hintText: 'SMRN-XXXX-XXXX',
-                  hintStyle: TextStyle(
-                    fontSize: 20,
-                    letterSpacing: 2,
-                    fontWeight: FontWeight.w700,
-                    color: cMuted.withValues(alpha: 0.5),
-                    fontFamily: 'monospace',
-                  ),
-                  filled: true,
-                  fillColor: cWhite,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: cBorder),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: cBorder),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: cPrimaryDark,
-                      width: 2,
-                    ),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 20,
-                  ),
-                ),
-              ),
-
-              if (_error.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: cDanger.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _error,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: cDanger,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-
-              if (_successName != null) ...[
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: cSoft,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: cPrimaryDark,
-                      width: 1.4,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.check_circle_rounded,
-                        color: cPrimaryDark,
-                        size: 24,
+                child: Column(
+                  children: [
+                    Container(
+                      width: 84,
+                      height: 84,
+                      decoration: BoxDecoration(
+                        color: CG.primaryPale,
+                        borderRadius: BorderRadius.circular(24),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Linked to $_successName.',
-                          style: const TextStyle(
-                            color: cDeep,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 14,
+                      child: const Icon(Icons.qr_code_scanner_rounded,
+                          color: CG.primary, size: 42),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      "Scan the patient's QR",
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                        color: CG.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      "Open the patient's Profile tab, then tap the QR code. "
+                      "Use the camera to scan.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: CG.textMuted,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      height: 52,
+                      child: FilledButton.icon(
+                        onPressed: _busy ? null : _scanQr,
+                        icon: const Icon(Icons.qr_code_scanner_rounded),
+                        label: const Text(
+                          'Open Camera Scanner',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: CG.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
                           ),
                         ),
                       ),
-                    ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 22),
+              const Row(children: [
+                Expanded(child: Divider(color: CG.border)),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10),
+                  child: Text('OR',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          color: CG.textMuted)),
+                ),
+                Expanded(child: Divider(color: CG.border)),
+              ]),
+              const SizedBox(height: 20),
+              const Text(
+                'Enter Smaran ID manually',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: CG.primary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _idCtrl,
+                textCapitalization: TextCapitalization.characters,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 16,
+                  letterSpacing: 1.5,
+                  fontWeight: FontWeight.w900,
+                ),
+                decoration: inputDec('SMRN-XXXX-XXXX'),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: _busy
+                      ? null
+                      : () {
+                          final v = _idCtrl.text.trim().toUpperCase();
+                          if (v.isEmpty) return;
+                          _link(v);
+                        },
+                  icon: const Icon(Icons.link_rounded,
+                      color: CG.primary),
+                  label: const Text(
+                    'Link by ID',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: CG.primary),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: CG.primary, width: 1.5),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
                   ),
                 ),
-              ],
-
-              const SizedBox(height: 24),
-
-              primaryButton(
-                _busy ? 'Linking…' : 'Link Patient',
-                _busy ? null : _link,
-                icon: Icons.link_rounded,
               ),
-
-              const SizedBox(height: 16),
-              const Text(
-                'Don\'t have a Patient ID yet? Ask the patient or their family '
-                'to open their Smaran account — the ID is shown during setup '
-                'and again in their Profile.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  height: 1.5,
-                  color: cMuted,
+              if (_busy)
+                const Padding(
+                  padding: EdgeInsets.only(top: 20),
+                  child: Center(
+                    child:
+                        CircularProgressIndicator(color: CG.primary),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Auto-inserts hyphens and upper-cases input.
-/// SMRN7K3P9X2Q  →  SMRN-7K3P-9X2Q
-class _PatientIdFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final raw = newValue.text.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
-    final truncated = raw.length > 12 ? raw.substring(0, 12) : raw;
-
-    final buf = StringBuffer();
-    for (int i = 0; i < truncated.length; i++) {
-      if (i == 4 || i == 8) buf.write('-');
-      buf.write(truncated[i]);
-    }
-    final formatted = buf.toString();
-
-    return TextEditingValue(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

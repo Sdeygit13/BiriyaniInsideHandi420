@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/auth/auth_store.dart';
 import '../../core/localization/app_languages.dart';
 import '../../core/theme/app_theme.dart';
-import 'role_selection_screen.dart';
 
 class LanguageSelectionScreen extends StatefulWidget {
   const LanguageSelectionScreen({super.key});
@@ -20,10 +19,7 @@ class _LanguageSelectionScreenState
   Future<void> _continue() async {
     if (_selected == null) return;
     await AuthStore.instance.setLanguage(_selected!);
-    if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-    );
+    // PreHomeRouter detects hasChosenLanguage and rebuilds.
   }
 
   @override

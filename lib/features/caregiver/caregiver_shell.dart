@@ -6,6 +6,7 @@ import '../../core/theme/caregiver_theme.dart';
 import 'caregiver_alerts_screen.dart';
 import 'caregiver_home_screen.dart';
 import 'caregiver_memory_bank_screen.dart';
+import 'caregiver_my_patients_screen.dart';
 import 'caregiver_patient_profile_screen.dart';
 import 'caregiver_progress_screen.dart';
 import 'caregiver_reports_screen.dart';
@@ -22,8 +23,14 @@ class CaregiverShell extends StatefulWidget {
 class _CaregiverShellState extends State<CaregiverShell> {
   int _tabIndex = 0;
 
+  // Tab indices — keep in sync with `_menuItems` and `_pages`.
+
+  static const tabPatientProfile = 2;
+  static const tabAlerts = 4;
+
   static const _menuItems = [
     _MenuItem('Home', Icons.home_rounded),
+    _MenuItem('My Patients', Icons.groups_rounded),
     _MenuItem('Patient Profile', Icons.person_rounded),
     _MenuItem('Progress', Icons.trending_up_rounded),
     _MenuItem('Alerts', Icons.notifications_rounded),
@@ -41,6 +48,10 @@ class _CaregiverShellState extends State<CaregiverShell> {
   Widget build(BuildContext context) {
     final pages = <Widget>[
       CaregiverHomeScreen(store: widget.store, onNavigate: _go),
+      CaregiverMyPatientsScreen(
+        store: widget.store,
+        onOpenProfile: () => _go(tabPatientProfile),
+      ),
       CaregiverPatientProfileScreen(store: widget.store),
       CaregiverProgressScreen(store: widget.store),
       CaregiverAlertsScreen(store: widget.store),
@@ -59,8 +70,9 @@ class _CaregiverShellState extends State<CaregiverShell> {
 
   PreferredSizeWidget _buildAppBar() {
     final user = AuthStore.instance.currentUser;
-    final initial =
-        (user?.fullName.isNotEmpty ?? false) ? user!.fullName[0].toUpperCase() : 'C';
+    final initial = (user?.fullName.isNotEmpty ?? false)
+        ? user!.fullName[0].toUpperCase()
+        : 'C';
 
     return AppBar(
       backgroundColor: CG.bg,
@@ -75,15 +87,11 @@ class _CaregiverShellState extends State<CaregiverShell> {
       titleSpacing: 0,
       title: Row(
         children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: CG.primary,
-              borderRadius: BorderRadius.circular(9),
-            ),
-            alignment: Alignment.center,
-            child: const Icon(Icons.eco_rounded, color: Colors.white, size: 18),
+          Image.asset(
+            'assets/images/logo.png',
+            width: 34,
+            height: 34,
+            fit: BoxFit.contain,
           ),
           const SizedBox(width: 10),
           const Text(
@@ -99,8 +107,9 @@ class _CaregiverShellState extends State<CaregiverShell> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.notifications_none_rounded, color: CG.primary),
-          onPressed: () => _go(3),
+          icon: const Icon(Icons.notifications_none_rounded,
+              color: CG.primary),
+          onPressed: () => _go(tabAlerts),
         ),
         Padding(
           padding: const EdgeInsets.only(right: 12),
@@ -119,7 +128,8 @@ class _CaregiverShellState extends State<CaregiverShell> {
                     ),
                   ),
                   const Text('Caregiver',
-                      style: TextStyle(fontSize: 10, color: CG.textMuted)),
+                      style: TextStyle(
+                          fontSize: 10, color: CG.textMuted)),
                 ],
               ),
               const SizedBox(width: 8),
@@ -158,16 +168,11 @@ class _CaregiverShellState extends State<CaregiverShell> {
               padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
               child: Row(
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: CG.primary,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.eco_rounded,
-                        color: Colors.white, size: 22),
+                  Image.asset(
+                    'assets/images/logo.png',
+                    width: 42,
+                    height: 42,
+                    fit: BoxFit.contain,
                   ),
                   const SizedBox(width: 12),
                   const Text(
@@ -186,7 +191,8 @@ class _CaregiverShellState extends State<CaregiverShell> {
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                children: List.generate(_menuItems.length, (i) {
+                children:
+                    List.generate(_menuItems.length, (i) {
                   final item = _menuItems[i];
                   return _DrawerTile(
                     icon: item.icon,
@@ -224,7 +230,8 @@ class _CaregiverShellState extends State<CaregiverShell> {
                   const Spacer(),
                   const Text(
                     'Last sync: 2 min ago',
-                    style: TextStyle(fontSize: 10.5, color: CG.textMuted),
+                    style:
+                        TextStyle(fontSize: 10.5, color: CG.textMuted),
                   ),
                 ],
               ),
@@ -266,17 +273,20 @@ class _DrawerTile extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
                 Icon(icon,
-                    size: 22, color: selected ? CG.primary : CG.textMuted),
+                    size: 22,
+                    color: selected ? CG.primary : CG.textMuted),
                 const SizedBox(width: 14),
                 Text(
                   label,
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+                    fontWeight:
+                        selected ? FontWeight.w900 : FontWeight.w700,
                     color: selected ? CG.primary : CG.textPrimary,
                   ),
                 ),

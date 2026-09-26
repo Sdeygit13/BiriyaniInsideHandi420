@@ -90,6 +90,14 @@ class AppUser {
   /// Format: `SMRN-XXXX-XXXX`.
   final String? patientId;
 
+  /// True after the patient completes one-time face enrollment on this device.
+  /// Not used for caregiver/family roles.
+  final bool biometricEnrolled;
+
+  /// Base64-encoded JPEG of the enrolled face photo. Patient only.
+  /// Roughly 18–20 KB per record. Null until enrollment completes.
+  final String? facePhotoBase64;
+
   const AppUser({
     required this.id,
     required this.fullName,
@@ -108,6 +116,8 @@ class AppUser {
     this.relationship,
     this.linkedPatientIds = const [],
     this.patientId,
+    this.biometricEnrolled = false,
+    this.facePhotoBase64,
   });
 
   AppUser copyWith({
@@ -128,6 +138,8 @@ class AppUser {
     String? relationship,
     List<String>? linkedPatientIds,
     String? patientId,
+    bool? biometricEnrolled,
+    String? facePhotoBase64,
   }) {
     return AppUser(
       id: id ?? this.id,
@@ -147,6 +159,8 @@ class AppUser {
       relationship: relationship ?? this.relationship,
       linkedPatientIds: linkedPatientIds ?? this.linkedPatientIds,
       patientId: patientId ?? this.patientId,
+      biometricEnrolled: biometricEnrolled ?? this.biometricEnrolled,
+      facePhotoBase64: facePhotoBase64 ?? this.facePhotoBase64,
     );
   }
 
@@ -168,6 +182,8 @@ class AppUser {
         'relationship': relationship,
         'linkedPatientIds': linkedPatientIds,
         'patientId': patientId,
+        'biometricEnrolled': biometricEnrolled,
+        'facePhotoBase64': facePhotoBase64,
       };
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
@@ -201,6 +217,8 @@ class AppUser {
             (j['linkedPatientIds'] as List?)?.map((e) => e.toString()).toList() ??
                 const [],
         patientId: j['patientId']?.toString(),
+        biometricEnrolled: j['biometricEnrolled'] as bool? ?? false,
+        facePhotoBase64: j['facePhotoBase64']?.toString(),
       );
 }
 

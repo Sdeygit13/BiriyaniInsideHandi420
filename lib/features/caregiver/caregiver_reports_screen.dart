@@ -1,7 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../../core/auth/auth_store.dart';
 import '../../core/domain/app_models.dart';
@@ -36,7 +36,6 @@ class CaregiverReportsScreen extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: CG.textMuted)),
           const SizedBox(height: 16),
 
-          // Metric tiles
           Row(
             children: [
               Expanded(
@@ -75,7 +74,7 @@ class CaregiverReportsScreen extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _MetricTile(
-                  value: '76%',
+                  value: '${store.hydrationToday()}/${store.hydrationTarget}',
                   label: 'Hydration',
                   bg: CG.moodBg,
                   fg: CG.moodFg,
@@ -87,16 +86,15 @@ class CaregiverReportsScreen extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          // Actions
           SizedBox(
             height: 52,
             child: FilledButton.icon(
               onPressed: () => _download(context),
               icon: const Icon(Icons.download_rounded, size: 20),
               label: const Text(
-                'Download Report',
-                style: TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w900),
+                'Download Report (PDF)',
+                style:
+                    TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: CG.primary,
@@ -111,7 +109,7 @@ class CaregiverReportsScreen extends StatelessWidget {
           SizedBox(
             height: 52,
             child: OutlinedButton.icon(
-              onPressed: () {},
+              onPressed: () => _download(context),
               icon: const Icon(Icons.share_rounded,
                   size: 20, color: CG.primary),
               label: const Text(
@@ -140,38 +138,81 @@ class CaregiverReportsScreen extends StatelessWidget {
     if (patients.isEmpty || caregiver == null) return;
 
     final p = patients.first;
-    final buffer = StringBuffer()
-      ..writeln('SMARAN — WEEKLY REPORT')
-      ..writeln('Patient: ${p.fullName}')
-      ..writeln('Caregiver: ${caregiver.fullName}')
-      ..writeln('Generated: ${DateTime.now()}')
-      ..writeln('')
-      ..writeln(
-          'Games week: ${CaregiverAnalytics.gamesPlayedThisWeek(store)}')
-      ..writeln(
-          'Compliance: ${CaregiverAnalytics.reminderCompliancePercent(store)}%');
+    final games = CaregiverAnalytics.gamesPlayedThisWeek(store);
+    final compliance = CaregiverAnalytics.reminderCompliancePercent(store);
+    final (done, total) = CaregiverAnalytics.remindersToday(store);
+    final streak = CaregiverAnalytics.dailyStreak(store);
+    final mood = CaregiverAnalytics.moodLabel(store);
 
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final f = File(
-          '${dir.path}/smaran_report_${DateTime.now().millisecondsSinceEpoch}.txt');
-      await f.writeAsString(buffer.toString());
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Saved: ${f.path.split('/').last}'),
-          backgroundColor: CG.primary,
+    final doc = pw.Document();
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        build: (ctx) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text('SMARAN — WEEKLY CARE REPORT',
+                style: pw.TextStyle(
+                    fontSize: 20, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 6),
+            pw.Text('Generated: ${DateTime.now()}',
+                style: const pw.TextStyle(
+                    fontSize: 10, color: PdfColors.grey700)),
+            pw.Divider(thickness: 1.2),
+            pw.SizedBox(height: 10),
+            _kv('Patient', p.fullName),
+            _kv('Patient ID', p.patientId ?? '—'),
+            _kv('Caregiver', caregiver.fullName),
+            pw.SizedBox(height: 18),
+            pw.Text('Summary',
+                style: pw.TextStyle(
+                    fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 8),
+            _kv('Games this week', '$games'),
+            _kv('Daily streak', '$streak days'),
+            _kv('Reminder compliance', '$compliance%'),
+            _kv('Medicines today', '$done / $total'),
+            _kv('Hydration today',
+                '${store.hydrationToday()}/${store.hydrationTarget}'),
+            _kv('Current mood', mood),
+            pw.SizedBox(height: 26),
+            pw.Text(
+              'This report is generated by Smaran and is intended for '
+              'care coordination. It is not a medical diagnosis.',
+              style: const pw.TextStyle(
+                  fontSize: 9, color: PdfColors.grey600),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (format) async => doc.save(),
+      name:
+          'smaran_${p.fullName.replaceAll(' ', '_').toLowerCase()}.pdf',
+    );
+  }
+
+  pw.Widget _kv(String k, String v) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 3),
+        child: pw.Row(
+          children: [
+            pw.SizedBox(
+              width: 160,
+              child: pw.Text(k,
+                  style: const pw.TextStyle(
+                      fontSize: 11, color: PdfColors.grey700)),
+            ),
+            pw.Expanded(
+              child: pw.Text(v,
+                  style: pw.TextStyle(
+                      fontSize: 11, fontWeight: pw.FontWeight.bold)),
+            ),
+          ],
         ),
       );
-    } catch (_) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Could not save.'),
-            backgroundColor: CG.danger),
-      );
-    }
-  }
 }
 
 class _MetricTile extends StatelessWidget {

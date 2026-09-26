@@ -7,27 +7,30 @@ import '../localization/app_languages.dart';
 import 'auth_models.dart';
 import 'auth_service.dart';
 import 'patient_id.dart';
+import 'pre_home_state.dart';
 
-/// Central state holder for authentication.
-///
-/// - Holds the currently signed-in [AppUser] and active [AuthSession]
-/// - Persists users + session to SharedPreferences
-/// - Exposes [ChangeNotifier] so the UI can rebuild on change
 class AuthStore extends ChangeNotifier {
   AuthStore._();
   static final AuthStore instance = AuthStore._();
 
-  // ── Persistence keys ─────────────────────────────────────────
   static const _kUsers = 'auth_users_v1';
   static const _kSession = 'auth_session_v1';
   static const _kLanguage = 'auth_language_v1';
+  static const _kLastUserId = 'auth_last_user_v1';
+  static const _kPhase = 'auth_phase_v1';
+  static const _kPendingRole = 'auth_pending_role_v1';
+  static const _kOtpMethod = 'auth_otp_method_v1';
 
-  // ── State ────────────────────────────────────────────────────
   AppUser? _currentUser;
   AuthSession? _session;
   AppLanguage _preferredLanguage = AppLanguage.english;
   bool _booted = false;
   bool _hasChosenLanguage = false;
+
+  OnboardingPhase _phase = OnboardingPhase.none;
+  UserRole? _pendingRole;
+  String? _otpMethod;
+  String? _lastUserId;
 
   // ── Getters ──────────────────────────────────────────────────
   AppUser? get currentUser => _currentUser;
@@ -37,11 +40,18 @@ class AuthStore extends ChangeNotifier {
   bool get isLoggedIn => _currentUser != null && _session != null;
   bool get hasChosenLanguage => _hasChosenLanguage;
 
+  OnboardingPhase get phase => _phase;
+  UserRole? get pendingRole => _pendingRole;
+  String? get otpMethod => _otpMethod;
+
+  AppUser? get lastKnownUser => _lastUserId == null
+      ? null
+      : AuthService.instance.findById(_lastUserId!);
+
   // ── Boot ─────────────────────────────────────────────────────
   Future<void> boot() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // 1. Rehydrate the user registry
     final rawUsers = prefs.getString(_kUsers);
     if (rawUsers != null) {
       try {
@@ -53,7 +63,6 @@ class AuthStore extends ChangeNotifier {
       } catch (_) {}
     }
 
-    // 2. Rehydrate the session
     final rawSession = prefs.getString(_kSession);
     if (rawSession != null) {
       try {
@@ -69,13 +78,64 @@ class AuthStore extends ChangeNotifier {
       } catch (_) {}
     }
 
-    // 3. Rehydrate the language preference
     final rawLang = prefs.getString(_kLanguage);
     _hasChosenLanguage = rawLang != null;
     _preferredLanguage = parseLanguage(rawLang);
 
+    _lastUserId = prefs.getString(_kLastUserId);
+    _phase = OnboardingPhaseX.fromKey(prefs.getString(_kPhase));
+
+    final rawRole = prefs.getString(_kPendingRole);
+    if (rawRole != null) {
+      _pendingRole = UserRole.values.firstWhere(
+        (r) => r.name == rawRole,
+        orElse: () => UserRole.patient,
+      );
+    }
+
+    _otpMethod = prefs.getString(_kOtpMethod);
+
+    // Resume mid-registration if the app was killed after account creation
+    // but before OTP verification.
+    if (_currentUser == null &&
+        _lastUserId != null &&
+        (_phase == OnboardingPhase.otpMethod ||
+            _phase == OnboardingPhase.otpEntry)) {
+      _currentUser = AuthService.instance.findById(_lastUserId!);
+    }
+
     _booted = true;
     notifyListeners();
+  }
+
+  // ── Phase management ────────────────────────────────────────
+  Future<void> setPhase(OnboardingPhase p) async {
+    _phase = p;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPhase, p.name);
+  }
+
+  Future<void> setPendingRole(UserRole? role) async {
+    _pendingRole = role;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (role == null) {
+      await prefs.remove(_kPendingRole);
+    } else {
+      await prefs.setString(_kPendingRole, role.name);
+    }
+  }
+
+  Future<void> setOtpMethod(String? method) async {
+    _otpMethod = method;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (method == null) {
+      await prefs.remove(_kOtpMethod);
+    } else {
+      await prefs.setString(_kOtpMethod, method);
+    }
   }
 
   // ── Language ─────────────────────────────────────────────────
@@ -125,8 +185,12 @@ class AuthStore extends ChangeNotifier {
     );
 
     _currentUser = user;
-    notifyListeners();
+    _lastUserId = user.id;
 
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastUserId, user.id);
+
+    notifyListeners();
     await _persistUsers();
     return user;
   }
@@ -143,8 +207,12 @@ class AuthStore extends ChangeNotifier {
 
     _currentUser = user;
     _session = AuthService.instance.issueSession(user.id);
-    notifyListeners();
+    _lastUserId = user.id;
 
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastUserId, user.id);
+
+    notifyListeners();
     await _persistUsers();
     await _persistSession();
     return user;
@@ -161,11 +229,26 @@ class AuthStore extends ChangeNotifier {
 
     _currentUser = user;
     _session = AuthService.instance.issueSession(user.id);
-    notifyListeners();
+    _lastUserId = user.id;
 
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastUserId, user.id);
+
+    notifyListeners();
     await _persistUsers();
     await _persistSession();
     return user;
+  }
+
+  /// Reissues a session for an already-verified user.
+  /// Called only after biometric success — the biometric is the trust boundary.
+  Future<void> reissueSessionFor(String userId) async {
+    final user = AuthService.instance.findById(userId);
+    if (user == null) throw AuthException('Account not found.');
+    _currentUser = user;
+    _session = AuthService.instance.issueSession(userId);
+    notifyListeners();
+    await _persistSession();
   }
 
   // ── OTP ──────────────────────────────────────────────────────
@@ -212,13 +295,57 @@ class AuthStore extends ChangeNotifier {
     await _persistUsers();
   }
 
+  // ── Biometric / face photo ───────────────────────────────────
+  Future<void> setBiometricEnrolled(bool value) async {
+    final user = _currentUser;
+    if (user == null) return;
+    _currentUser = user.copyWith(biometricEnrolled: value);
+    notifyListeners();
+    await _persistUsers();
+  }
+
+  Future<void> setFacePhoto(String base64Jpeg) async {
+    final user = _currentUser;
+    if (user == null) return;
+    _currentUser = user.copyWith(facePhotoBase64: base64Jpeg);
+    notifyListeners();
+    await _persistUsers();
+  }
+
+  Future<void> clearFacePhoto() async {
+    final user = _currentUser;
+    if (user == null) return;
+    _currentUser = user.copyWith(facePhotoBase64: null);
+    notifyListeners();
+    await _persistUsers();
+  }
+
   // ── Logout ───────────────────────────────────────────────────
   Future<void> logout() async {
     _currentUser = null;
     _session = null;
+    _phase = OnboardingPhase.none;
+    _pendingRole = null;
+    _otpMethod = null;
+
     notifyListeners();
 
     final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kSession);
+    await prefs.remove(_kPhase);
+    await prefs.remove(_kPendingRole);
+    await prefs.remove(_kOtpMethod);
+    // _kLastUserId is intentionally retained for session recovery.
+  }
+
+  /// Forget the last known account entirely (used by "Use a different account").
+  Future<void> clearLastUser() async {
+    _lastUserId = null;
+    _currentUser = null;
+    _session = null;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kLastUserId);
     await prefs.remove(_kSession);
   }
 
@@ -226,25 +353,18 @@ class AuthStore extends ChangeNotifier {
   // LINKED PATIENTS
   // ─────────────────────────────────────────────────────────────
 
-  /// Full [AppUser] records of patients linked to the current user.
-  /// For patient role, returns a single-item list containing themselves.
   List<AppUser> get linkedPatients {
     final user = _currentUser;
     if (user == null) return const [];
 
-    if (user.role == UserRole.patient) {
-      return [user];
-    }
+    if (user.role == UserRole.patient) return [user];
 
     return AuthService.instance.resolvePatients(user.linkedPatientIds);
   }
 
-  /// Link a patient by raw ID. Updates the current caregiver/family user.
   Future<void> linkPatientById(String rawId) async {
     final user = _currentUser;
-    if (user == null) {
-      throw AuthException('You are not signed in.');
-    }
+    if (user == null) throw AuthException('You are not signed in.');
     if (!PatientId.isValid(rawId)) {
       throw AuthException(
         'Please enter a valid ID in the format SMRN-XXXX-XXXX.',
@@ -261,7 +381,18 @@ class AuthStore extends ChangeNotifier {
     await _persistUsers();
   }
 
-  /// Unlink a patient by raw ID.
+  Future<bool> linkPatientBySmrnId(String rawId) async {
+    try {
+      await linkPatientById(rawId);
+      return true;
+    } on AuthException catch (e) {
+      if (e.message.contains('maximum')) rethrow;
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> unlinkPatientById(String rawId) async {
     final user = _currentUser;
     if (user == null) return;
@@ -276,8 +407,6 @@ class AuthStore extends ChangeNotifier {
     await _persistUsers();
   }
 
-  /// Ensure the signed-in patient has a Patient ID.
-  /// For accounts created before this feature existed.
   Future<void> ensurePatientId() async {
     final user = _currentUser;
     if (user == null || user.role != UserRole.patient) return;
@@ -309,7 +438,6 @@ class AuthStore extends ChangeNotifier {
     await prefs.setString(_kSession, jsonEncode(s.toJson()));
   }
 
-  /// Update the current user (e.g. after editing profile).
   Future<void> updateCurrentUser(AppUser updated) async {
     _currentUser = updated;
     notifyListeners();

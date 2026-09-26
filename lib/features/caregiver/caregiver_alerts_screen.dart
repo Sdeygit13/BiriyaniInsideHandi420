@@ -4,12 +4,21 @@ import '../../core/domain/app_models.dart';
 import '../../core/services/caregiver_analytics.dart';
 import '../../core/theme/caregiver_theme.dart';
 
-class CaregiverAlertsScreen extends StatelessWidget {
+class CaregiverAlertsScreen extends StatefulWidget {
   final SmaranStore store;
   const CaregiverAlertsScreen({super.key, required this.store});
 
   @override
+  State<CaregiverAlertsScreen> createState() =>
+      _CaregiverAlertsScreenState();
+}
+
+class _CaregiverAlertsScreenState extends State<CaregiverAlertsScreen> {
+  _Sev? _filter;
+
+  @override
   Widget build(BuildContext context) {
+    final store = widget.store;
     final (missed, _) = CaregiverAnalytics.missedMedicinesToday(store);
     final games = CaregiverAnalytics.gamesPlayedToday(store);
     final mood = CaregiverAnalytics.moodLabel(store);
@@ -26,7 +35,8 @@ class CaregiverAlertsScreen extends StatelessWidget {
       _Alert(
         severity: _Sev.attention,
         title: 'Hydration Below Target',
-        detail: 'Only 4/6 glasses completed today.',
+        detail:
+            'Only ${store.hydrationToday()}/${store.hydrationTarget} glasses completed today.',
         time: 'Today',
         icon: Icons.local_drink_rounded,
       ),
@@ -61,6 +71,10 @@ class CaregiverAlertsScreen extends StatelessWidget {
       ),
     ];
 
+    final visible = alerts
+        .where((a) => _filter == null || a.severity == _filter)
+        .toList();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
       child: Column(
@@ -79,44 +93,69 @@ class CaregiverAlertsScreen extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: CG.textMuted)),
           const SizedBox(height: 16),
 
-          // Filter chips
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _filterChip('All', true),
+                _chip('All', null),
                 const SizedBox(width: 8),
-                _filterChip('Urgent', false),
+                _chip('Urgent', _Sev.urgent),
                 const SizedBox(width: 8),
-                _filterChip('Attention', false),
+                _chip('Attention', _Sev.attention),
                 const SizedBox(width: 8),
-                _filterChip('Info', false),
+                _chip('Info', _Sev.info),
               ],
             ),
           ),
 
           const SizedBox(height: 16),
 
-          ...alerts.map((a) => _AlertCard(alert: a)),
+          if (visible.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(CG.rCard),
+                border: Border.all(color: CG.border),
+              ),
+              child: const Column(
+                children: [
+                  Icon(Icons.check_circle_rounded,
+                      color: CG.success, size: 48),
+                  SizedBox(height: 10),
+                  Text('No alerts in this category',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: CG.textPrimary)),
+                ],
+              ),
+            )
+          else
+            ...visible.map((a) => _AlertCard(alert: a)),
         ],
       ),
     );
   }
 
-  Widget _filterChip(String label, bool selected) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: selected ? CG.primary : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: selected ? CG.primary : CG.border),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-          color: selected ? Colors.white : CG.textPrimary,
+  Widget _chip(String label, _Sev? sev) {
+    final selected = _filter == sev;
+    return GestureDetector(
+      onTap: () => setState(() => _filter = sev),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? CG.primary : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: selected ? CG.primary : CG.border),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            color: selected ? Colors.white : CG.textPrimary,
+          ),
         ),
       ),
     );

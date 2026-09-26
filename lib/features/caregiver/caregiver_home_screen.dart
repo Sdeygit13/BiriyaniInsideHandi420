@@ -60,7 +60,8 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
     if (patients.isEmpty) return;
     final phone = patients.first.phone.trim();
     if (phone.isEmpty) {
-      _toast('No phone number on file for this patient.', danger: true);
+      _toast('No phone number on file for this patient.',
+          danger: true);
       return;
     }
     final uri = Uri.parse('tel:$phone');
@@ -75,8 +76,6 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
     }
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     final store = widget.store;
@@ -87,12 +86,13 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
     final gamesToday = CaregiverAnalytics.gamesPlayedToday(store);
     final mood = CaregiverAnalytics.moodLabel(store);
     final moodEmoji = CaregiverAnalytics.moodEmoji(store);
-    final (medsDone, medsTotal) = CaregiverAnalytics.remindersToday(store);
-    final (missedMeds, _) = CaregiverAnalytics.missedMedicinesToday(store);
+    final (medsDone, medsTotal) =
+        CaregiverAnalytics.remindersToday(store);
+    final (missedMeds, _) =
+        CaregiverAnalytics.missedMedicinesToday(store);
 
-    // Hydration — placeholder until data source exists
-    const hydrationDone = 4;
-    const hydrationTotal = 6;
+    final hydrationDone = store.hydrationToday();
+    final hydrationTotal = store.hydrationTarget;
 
     final firstName = caregiver?.fullName.split(' ').first ?? 'Caregiver';
 
@@ -101,7 +101,6 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Greeting
           Row(
             children: [
               Expanded(
@@ -227,7 +226,7 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                 child: _QuickAction(
                   icon: Icons.notifications_active_rounded,
                   label: 'Check Alerts',
-                  onTap: () => widget.onNavigate(3),
+                  onTap: () => widget.onNavigate(4),
                 ),
               ),
             ],
@@ -239,7 +238,7 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                 child: _QuickAction(
                   icon: Icons.photo_library_rounded,
                   label: 'Memory Bank',
-                  onTap: () => widget.onNavigate(4),
+                  onTap: () => widget.onNavigate(5),
                 ),
               ),
               const SizedBox(width: 10),
@@ -247,7 +246,7 @@ class _CaregiverHomeScreenState extends State<CaregiverHomeScreen> {
                 child: _QuickAction(
                   icon: Icons.picture_as_pdf_rounded,
                   label: 'Generate Report',
-                  onTap: () => widget.onNavigate(5),
+                  onTap: () => widget.onNavigate(6),
                 ),
               ),
             ],
@@ -315,7 +314,8 @@ class _PatientSelector extends StatelessWidget {
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
             decoration: BoxDecoration(
               color: CG.primaryPale,
               borderRadius: BorderRadius.circular(20),
@@ -360,6 +360,7 @@ class _PatientOverviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = patient.fullName as String;
     final initial = name.isNotEmpty ? name[0].toUpperCase() : 'P';
+
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -421,10 +422,6 @@ class _PatientOverviewCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                const Text(
-                  'Age: 72  •  Assam',
-                  style: TextStyle(fontSize: 12, color: CG.textMuted),
-                ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -455,7 +452,8 @@ class _PatientOverviewCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     const Text(
                       'Last synced: 2 min ago',
-                      style: TextStyle(fontSize: 10.5, color: CG.textFaint),
+                      style: TextStyle(
+                          fontSize: 10.5, color: CG.textFaint),
                     ),
                   ],
                 ),
@@ -496,7 +494,9 @@ class _StatTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(CG.rCard),
-        border: highlight ? Border.all(color: CG.danger, width: 1.5) : null,
+        border: highlight
+            ? Border.all(color: CG.danger, width: 1.5)
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -569,7 +569,8 @@ class _QuickAction extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(CG.rButton),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(CG.rButton),
             border: Border.all(color: CG.border),
@@ -636,13 +637,15 @@ class _MotivationBanner extends StatelessWidget {
                 SizedBox(height: 8),
                 Text(
                   'Keep up the daily routine — it makes a real difference.',
-                  style: TextStyle(fontSize: 11.5, color: CG.textMuted),
+                  style:
+                      TextStyle(fontSize: 11.5, color: CG.textMuted),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          const Icon(Icons.favorite_rounded, color: CG.danger, size: 34),
+          const Icon(Icons.favorite_rounded,
+              color: CG.danger, size: 34),
         ],
       ),
     );

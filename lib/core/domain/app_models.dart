@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'hydration_log.dart';
+
 // =============================================================================
 // ENUMS
 // =============================================================================
@@ -14,30 +16,15 @@ enum MedicineTiming { beforeFood, afterFood }
 
 // =============================================================================
 // GAME SESSION
-//
-// One record per completed game. Used for:
-//   - Progress banner on Home ("2 of 5 games today")
-//   - Difficulty Optimizer (adjusts next game difficulty)
-//   - Caregiver dashboard (long-term trends)
 // =============================================================================
 
 class GameSession {
   /// 'memory_match' | 'sequence_recall' | 'pattern_tap' | 'word_picture' | 'sound_match'
   final String gameId;
-
-  /// 0..100. Higher = better performance.
   final int score;
-
-  /// How long the user took, in seconds.
   final int durationSec;
-
-  /// Difficulty level when this session was played. 1..10.
   final int difficulty;
-
-  /// Number of moves / taps / attempts.
   final int moves;
-
-  /// When the session finished.
   final DateTime timestamp;
 
   const GameSession({
@@ -88,15 +75,8 @@ class AlarmReminder {
   MedicineTiming? medicineTiming;
   bool isActive;
   bool done;
-
-  /// The language used to set this reminder.
   String language;
-
-  /// Display name of whoever created this reminder.
-  /// `null` means the patient created it themselves.
-  /// Non-null means a caregiver / family member set it.
   String? createdByName;
-
   int systemTimeStamp;
 
   AlarmReminder({
@@ -115,18 +95,14 @@ class AlarmReminder {
     this.language = 'english',
     this.createdByName,
     int? systemTimeStamp,
-  }) : systemTimeStamp = systemTimeStamp ?? DateTime.now().millisecondsSinceEpoch;
+  }) : systemTimeStamp =
+            systemTimeStamp ?? DateTime.now().millisecondsSinceEpoch;
 
-  /// True if a caregiver / family member set this reminder.
   bool get isCaregiverSet => createdByName != null;
 
-  // ── Convenience getters ─────────────────────────────────────
-
-  /// Display string like "10:30 AM".
   String get time =>
       '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $amPm';
 
-  /// Next actual DateTime this alarm should fire.
   DateTime get nextSystemDateTime {
     final now = DateTime.now();
     final hour24 = amPm.toUpperCase() == 'PM'
@@ -134,13 +110,8 @@ class AlarmReminder {
         : (hour == 12 ? 0 : hour);
 
     var target = repeatType == RepeatType.specificDate && specificDate != null
-        ? DateTime(
-            specificDate!.year,
-            specificDate!.month,
-            specificDate!.day,
-            hour24,
-            minute,
-          )
+        ? DateTime(specificDate!.year, specificDate!.month,
+            specificDate!.day, hour24, minute)
         : DateTime(now.year, now.month, now.day, hour24, minute);
 
     if (repeatType == RepeatType.daily || repeatType == RepeatType.once) {
@@ -148,8 +119,6 @@ class AlarmReminder {
     }
     return target;
   }
-
-  // ── JSON ────────────────────────────────────────────────────
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -263,6 +232,18 @@ class SmaranStore extends ChangeNotifier {
   String language = 'English';
   bool guardian = false;
 
+  // Patient meta
+  int patientAge = 0;
+  String patientLocation = '';
+  int hydrationTarget = 6;
+
+  // Hydration logs
+  final List<HydrationLog> hydrationLogs = [];
+
+  // Linked patient SMRN IDs (for caregiver)
+  final List<String> linkedPatientSmrnIds = [];
+
+  // Core collections
   final List<AlarmReminder> reminders = [];
   final List<Person> people = [];
   final List<Memory> memories = [];
@@ -277,6 +258,18 @@ class SmaranStore extends ChangeNotifier {
     caregiverName = prefs.getString('caregiverName') ?? 'Caregiver';
     language = prefs.getString('language') ?? 'English';
     guardian = prefs.getBool('guardian') ?? false;
+
+    patientAge = prefs.getInt('patientAge') ?? 0;
+    patientLocation = prefs.getString('patientLocation') ?? '';
+    hydrationTarget = prefs.getInt('hydrationTarget') ?? 6;
+
+    hydrationLogs
+      ..clear()
+      ..addAll(_decodeList('hydrationLogs').map(HydrationLog.fromJson));
+
+    linkedPatientSmrnIds
+      ..clear()
+      ..addAll(prefs.getStringList('linkedPatientSmrnIds') ?? const []);
 
     reminders
       ..clear()
@@ -294,7 +287,7 @@ class SmaranStore extends ChangeNotifier {
       ..clear()
       ..addAll(_decodeList('gameSessions').map(GameSession.fromJson));
 
-    notifyListeners();  
+    notifyListeners();
   }
 
   // ── Save ────────────────────────────────────────────────────
@@ -304,6 +297,17 @@ class SmaranStore extends ChangeNotifier {
     await prefs.setString('caregiverName', caregiverName);
     await prefs.setString('language', language);
     await prefs.setBool('guardian', guardian);
+
+    await prefs.setInt('patientAge', patientAge);
+    await prefs.setString('patientLocation', patientLocation);
+    await prefs.setInt('hydrationTarget', hydrationTarget);
+
+    await prefs.setString(
+      'hydrationLogs',
+      jsonEncode(hydrationLogs.map((e) => e.toJson()).toList()),
+    );
+
+    await prefs.setStringList('linkedPatientSmrnIds', linkedPatientSmrnIds);
 
     await prefs.setString(
       'reminders',
@@ -326,7 +330,6 @@ class SmaranStore extends ChangeNotifier {
 
   // ── Game helpers ────────────────────────────────────────────
 
-  /// Number of distinct games completed today (max 5).
   int gamesCompletedToday() {
     final today = DateTime.now();
     final ids = <String>{};
@@ -340,11 +343,28 @@ class SmaranStore extends ChangeNotifier {
     return ids.length.clamp(0, 5);
   }
 
-  /// Sessions of a given game, newest first.
   List<GameSession> sessionsFor(String gameId) {
     final list = gameSessions.where((s) => s.gameId == gameId).toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
     return list;
+  }
+
+  // ── Hydration helpers ───────────────────────────────────────
+
+  int hydrationToday() {
+    final now = DateTime.now();
+    return hydrationLogs
+        .where((h) =>
+            h.timestamp.year == now.year &&
+            h.timestamp.month == now.month &&
+            h.timestamp.day == now.day)
+        .fold(0, (sum, h) => sum + h.glasses);
+  }
+
+  Future<void> logWaterGlass() async {
+    hydrationLogs
+        .add(HydrationLog(timestamp: DateTime.now(), glasses: 1));
+    await save();
   }
 
   // ── Helpers ─────────────────────────────────────────────────
